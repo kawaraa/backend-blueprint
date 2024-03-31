@@ -17,7 +17,7 @@ Structuring the folders and files in your backend project is crucial for maintai
 - **src:**
   - **api:** Define your API routes and controllers here.
   - **models:** Database models and schema definitions.
-  - **services:** Business logic and application services.
+  - **views / services:** Business logic and application services. In a backend application, the _view_ layer is often replaced with a service layer or response generation logic. This layer is responsible for formatting responses sent to clients, such as JSON data in RESTful APIs or rendered HTML in server-side rendered applications.
   - **middlewares:** Custom middleware functions.
   - **utils:** Utility functions that can be used across the application.
   - **routes:** Organize your route definitions.

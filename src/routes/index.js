@@ -1,11 +1,10 @@
 // src/routes/index.js
-const express = require("express");
+const router = require("express").Router();
 const apiRouter = require("./api");
-
-const router = express.Router();
 
 // Additional global middleware or routes can be defined here
 
 router.use("/api", apiRouter);
+router.use("/some-other-route", someOtherRouter);
 
 module.exports = router;

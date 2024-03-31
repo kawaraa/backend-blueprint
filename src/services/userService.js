@@ -1,3 +1,5 @@
+// In a backend application, the "view" layer is often replaced with a service layer or response generation logic. This layer is responsible for formatting and sending responses back to clients, such as JSON data in RESTful APIs or rendered HTML in server-side rendered
+
 const User = require("../models/User");
 
 async function getAllUsers() {
