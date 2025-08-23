@@ -3,7 +3,7 @@ import Normalizer from "k-utilities/normalizer.js";
 import Validator from "k-utilities/validator.js";
 import path from "node:path";
 const immutableFields = jsonRequire("src/config/immutable-fields.json");
-const scriptPath = path.resolve("database/schema.sql");
+const scriptPath = path.resolve("scripts/database/schema.sql");
 
 export const columns = extractColumn(readFileSync(scriptPath, "UTF-8").split("\n"));
 

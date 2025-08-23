@@ -1,4 +1,3 @@
-import postgresqlDB from "../providers/postgresql.js";
 import checkPermission from "../config/rbac-check.js";
 import Controller from "./default.js";
 
@@ -12,12 +11,11 @@ export default class BranchController extends Controller {
 
   get = async ({ user, query, pagination }, res, next) => {
     try {
-      const { sql, values } = postgresqlDB.prepareQuery(this.selectQuery, query, pagination);
-      const data = await postgresqlDB.query(sql, values);
+      const { sql, values } = this.db.prepareQuery(this.selectQuery, query, pagination);
+      const data = await this.db.query(sql, values);
       await Promise.all(
         data.map(async (item) => {
-          item.departments =
-            +(await postgresqlDB.query(this.selectDepartmentQuery, [item.id]))[0]?.total || 0;
+          item.departments = +(await this.db.query(this.selectDepartmentQuery, [item.id]))[0]?.total || 0;
           return item;
         })
       );

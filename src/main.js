@@ -6,10 +6,8 @@ import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import mongoSanitize from "express-mongo-sanitize";
-import xss from "xss-clean";
 import authRoute from "./routes/auth.js";
 import apiRoutes from "./routes/api.js";
-import publicApiRoute from "./routes/public.js";
 import errorHandlerMiddleware from "./middlewares/error.js";
 import authMiddleware from "./middlewares/auth.js";
 import { RequestRateLimiter } from "k-utilities/express-middleware.js";
@@ -37,11 +35,11 @@ app.use(cookieParser());
 
 // Data sanitization
 app.use(mongoSanitize());
-app.use(xss());
+app.use(helmet.xssFilter());
 
 // Routes
 app.use("/api/auth", authRoute());
-app.use("/api/public", publicApiRoute);
+// app.use("/api/public", publicApiRoute);
 app.use("/api", authMiddleware, apiRoutes);
 app.use("/*", (req, res, next) => next("NOT_FOUND"));
 app.use(errorHandlerMiddleware);

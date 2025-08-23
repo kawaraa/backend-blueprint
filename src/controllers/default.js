@@ -1,11 +1,12 @@
-import postgresqlDB from "../providers/postgresql.js";
+import sqliteDB from "../providers/sqlite.js";
 import checkPermission from "../config/rbac-check.js";
-import { removeImmutableFields } from "../utils/sql-query-validator.js";
+import { removeImmutableFields } from "../utils/validators/sql-query-validator.js";
 import { cleanUpOldFiles } from "../services/all.js";
 import path from "node:path";
 
 export default class DefaultController {
   constructor(entity) {
+    this.db = sqliteDB;
     this.entity = entity;
     this.createQuery = `INSERT INTO ${entity} `;
     this.selectQuery = `SELECT *, COUNT(*) OVER() AS total FROM ${this.entity} WHERE`;
@@ -18,8 +19,8 @@ export default class DefaultController {
       // Todo: ask AI how to perform the query only of the user linked to a role that has permission xxx
       // SELECT EXISTS(SELECT 1 FROM role WHERE id = 'xxx');
       // SELECT COUNT(\*) FROM permission WHERE role_id = 'xxx';
-      const { sql, values } = postgresqlDB.prepareQuery(this.selectQuery, query, pagination);
-      const data = await postgresqlDB.query(sql, values);
+      const { sql, values } = this.db.prepareQuery(this.selectQuery, query, pagination);
+      const data = await this.db.query(sql, values);
       const total = +data[0]?.total || 0;
       data.forEach((d) => delete d.total);
 
@@ -35,13 +36,8 @@ export default class DefaultController {
     try {
       const result = await checkPermission(user, "view", this.entity, []);
 
-      const { sql, values } = postgresqlDB.prepareQuery(
-        this.selectQuery,
-        query,
-        pagination,
-        result.superuser
-      );
-      const data = await postgresqlDB.query(sql, values);
+      const { sql, values } = this.db.prepareQuery(this.selectQuery, query, pagination, result.superuser);
+      const data = await this.db.query(sql, values);
       const total = +data[0]?.total || 0;
       data.forEach((d) => delete d.total);
 
@@ -59,12 +55,12 @@ export default class DefaultController {
 
       let data = Array.isArray(body) ? body : [body];
       data = data.map((d) => ({ ...removeImmutableFields(d, this.entity == "old_personnel"), created_by }));
-      data = await postgresqlDB.create(this.entity, file ? [data[0]] : data, "*");
+      data = await this.db.create(this.entity, file ? [data[0]] : data, "*");
 
       if (file) {
         const document = { reference_id: data[0]?.id, type: this.entity, file_path: file.path, created_by };
         if (data[0]?.identity_id) document.identity_id = data[0]?.identity_id;
-        const documentId = (await postgresqlDB.create("document", [document], "id"))[0]?.id;
+        const documentId = (await this.db.create("document", [document], "id"))[0]?.id;
         data[0].documentId = documentId;
         data[0].document = file.path;
       }
@@ -80,7 +76,7 @@ export default class DefaultController {
       delete data.identity_id;
       const result = await checkPermission(user, "edit", this.entity, [{ ...data, id: params.id }]);
       if (!result.permitted) return next("FORBIDDEN");
-      await postgresqlDB.update(this.entity, data, params.id);
+      await this.db.update(this.entity, data, params.id);
       res.json(data);
     } catch (error) {
       next(error);
@@ -91,14 +87,14 @@ export default class DefaultController {
     try {
       const result = await checkPermission(user, "delete", this.entity);
       if (!result.permitted) return next("FORBIDDEN");
-      if (!result.superuser) await postgresqlDB.softDelete(this.entity, params.id);
+      if (!result.superuser) await this.db.softDelete(this.entity, params.id);
       else {
-        const doc = (await postgresqlDB.get("document", "reference_id", params.id))[0];
+        const doc = (await this.db.get("document", "reference_id", params.id))[0];
         if (doc) {
           await cleanUpOldFiles(path.resolve(doc.file_path));
-          await postgresqlDB.delete("document", "reference_id", params.id);
+          await this.db.delete("document", "reference_id", params.id);
         }
-        await postgresqlDB.delete(this.entity, "id", params.id);
+        await this.db.delete(this.entity, "id", params.id);
       }
       res.json({ success: true });
     } catch (error) {
@@ -110,7 +106,7 @@ export default class DefaultController {
     try {
       const result = await checkPermission(user, "edit", this.entity, [{ deleted_at: null }]);
       if (!result.permitted) return next("FORBIDDEN");
-      const data = await postgresqlDB.update(this.entity, { deleted_at: null }, params.id);
+      const data = await this.db.update(this.entity, { deleted_at: null }, params.id);
       res.json({ data });
     } catch (error) {
       next(error);

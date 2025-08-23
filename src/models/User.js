@@ -1,14 +1,18 @@
-// UserModel.js
+class User {
+  constructor(data) {
+    if (data.id) this.id = data.id;
+    if (data.name) this.name = data.name;
+    if (data.username) this.username = data.username;
+    if (data.type) this.type = data.type;
+    if (data.branch_id) this.branch_id = data.branch_id;
+    if (data.role_id) {
+      this.role_id = data.role_id;
+      if (!data.role_assignor) throw new Error("'role_assignor' is required field");
+      this.role_assignor = data.role_assignor;
+      this.role_assigned_at = new Date().toISOString();
+    }
+    if (data.status) this.status = data.status;
+  }
+}
 
-const mongoose = require("mongoose");
-
-const userSchema = new mongoose.Schema({
-  username: { type: String, required: true },
-  email: { type: String, required: true },
-  password: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now },
-});
-
-const User = mongoose.model("User", userSchema);
-
-module.exports = User;
+export default User;

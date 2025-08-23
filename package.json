@@ -1,0 +1,37 @@
+{
+  "name": "backend-blueprint",
+  "version": "1.0.0",
+  "description": "Structuring the folders and files in a backend project is crucial for maintaining a clean and organized codebase. While there's no one-size-fits-all solution, a well-thought-out structure makes it easier for developers to understand, maintain, and scale the application. this's a common approach for structuring a backend project",
+  "type": "module",
+  "main": "main.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "start": "node src/main.js",
+    "dev": "nodemon src/main.js",
+    "test": "jest --coverage"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github.com:kawaraa/backend-blueprint.git"
+  },
+  "author": "kawara",
+  "license": "ISC",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "express-mongo-sanitize": "^2.2.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "k-utilities": "^1.5.1",
+    "multer": "^2.0.2",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.10"
+  }
+}

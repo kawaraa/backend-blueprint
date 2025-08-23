@@ -1,7 +1,6 @@
 import Controller from "./default.js";
 import crypto from "node:crypto";
 import bcrypt from "bcrypt";
-import postgresqlDB from "../providers/postgresql.js";
 import checkPermission from "../config/rbac-check.js";
 import User from "../models/user.js";
 
@@ -14,7 +13,7 @@ export default class UserController extends Controller {
 
   getLoggedInUser = async ({ user }, res, next) => {
     try {
-      res.json({ data: await postgresqlDB.query(this.selectQuery + " t1.id = $1", [user.id]) });
+      res.json({ data: await this.db.query(this.selectQuery + " t1.id = $1", [user.id]) });
     } catch (error) {
       next(error);
     }
@@ -23,15 +22,9 @@ export default class UserController extends Controller {
   get = async ({ user, query, pagination }, res, next) => {
     try {
       query = new User(query);
-      const { sql, values } = await postgresqlDB.prepareQuery(
-        this.selectQuery,
-        query,
-        pagination,
-        false,
-        "t1."
-      );
+      const { sql, values } = await this.db.prepareQuery(this.selectQuery, query, pagination, false, "t1.");
 
-      const data = await postgresqlDB.query(sql, values);
+      const data = await this.db.query(sql, values);
       const total = +data[0]?.total || 0;
       data.forEach((d) => delete d.total);
 
@@ -46,14 +39,14 @@ export default class UserController extends Controller {
     try {
       const result = await checkPermission(user, "view", this.entity, []);
 
-      const { sql, values } = postgresqlDB.prepareQuery(
+      const { sql, values } = this.db.prepareQuery(
         this.selectQuery,
         query,
         pagination,
         result.superuser,
         "t1."
       );
-      const data = await postgresqlDB.query(sql, values);
+      const data = await this.db.query(sql, values);
       const total = +data[0]?.total || 0;
       data.forEach((d) => delete d.total);
 
@@ -73,8 +66,8 @@ export default class UserController extends Controller {
       data.created_by = user.id;
       data.password_hash = await bcrypt.hash(body.password || crypto.randomBytes(8).toString("hex"), 10);
 
-      const { sql, values } = postgresqlDB.prepareInsertQuery(this.entity, [data]);
-      res.json({ data: await postgresqlDB.query(sql + " RETURNING *", values) });
+      const { sql, values } = this.db.prepareInsertQuery(this.entity, [data]);
+      res.json({ data: await this.db.query(sql + " RETURNING *", values) });
     } catch (error) {
       next(error);
     }
@@ -92,13 +85,13 @@ export default class UserController extends Controller {
       if (body.password) data.password_hash = await bcrypt.hash(body.password, 10);
 
       if (data.type != "ADMIN") {
-        const user = (await postgresqlDB.get(this.entity, "id", body.id, "type"))[0];
+        const user = (await this.db.get(this.entity, "id", body.id, "type"))[0];
         if (user?.type == "APPLICANT") {
           return next("403-user type 'APPLICANT' can not have admin role");
         }
       }
 
-      await postgresqlDB.update(this.entity, data, params.id);
+      await this.db.update(this.entity, data, params.id);
 
       res.json({ success: true });
     } catch (error) {

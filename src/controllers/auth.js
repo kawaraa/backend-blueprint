@@ -1,5 +1,4 @@
 import Controller from "./default.js";
-import postgresqlDB from "../providers/postgresql.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import User from "../models/user.js";
@@ -19,8 +18,8 @@ export default class AuthController extends Controller {
   register = async ({ body: { name, username, password } }, res, next) => {
     try {
       const data = { name, username, type: "APPLICANT", password_hash: await bcrypt.hash(password, 10) };
-      const user = (await postgresqlDB.create("users", [data], "id"))[0];
-      await postgresqlDB.update("users", { created_by: user.id }, user.id);
+      const user = (await this.db.create("users", [data], "id"))[0];
+      await this.db.update("users", { created_by: user.id }, user.id);
       res.json({ data: [user] });
     } catch (error) {
       next(error);
@@ -30,7 +29,7 @@ export default class AuthController extends Controller {
   login = async (req, res, next) => {
     try {
       const { username, password } = req.body;
-      const user = (await postgresqlDB.get("users", "username", username, this.fieldsForJWT))[0];
+      const user = (await this.db.get("users", "username", username, this.fieldsForJWT))[0];
       if (!user || !(await bcrypt.compare(password, user.password_hash))) return next("UNAUTHORIZED");
       delete user.password_hash;
 
@@ -38,7 +37,7 @@ export default class AuthController extends Controller {
       res.cookie("accessToken", token, { httpOnly: true, secure, maxAge, sameSite: "strict" });
       res.json({ accessToken: token });
       const sql = `UPDATE users SET last_login = $1 WHERE username = $2`;
-      postgresqlDB.query(sql, [new Date().toISOString(), username]).catch(() => null);
+      this.db.query(sql, [new Date().toISOString(), username]).catch(() => null);
     } catch (error) {
       next(error);
     }

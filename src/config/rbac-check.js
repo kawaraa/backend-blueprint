@@ -1,5 +1,5 @@
 // Role-Based Access Control check Permission Function
-import postgresqlDB from "../providers/postgresql.js";
+import sqliteDB from "../providers/sqlite.js";
 
 // permission syntax: "action:entity:who:field"
 async function checkPermission(user, action, entity, data = []) {
@@ -7,7 +7,7 @@ async function checkPermission(user, action, entity, data = []) {
 
   if (!user || !user.role_id) return result;
 
-  const permissions = await postgresqlDB.query(
+  const permissions = await sqliteDB.query(
     "SELECT permission.code FROM role JOIN permission ON role.id = permission.role_id WHERE role.id = $1",
     [user.role_id]
   );
@@ -25,7 +25,7 @@ async function checkPermission(user, action, entity, data = []) {
     if (code == `${action}:${entity}:self:*`) {
       if (action == "delete") return result;
       if (action == "edit") {
-        data = await postgresqlDB.get(entity, "id", data[0].id, "id,created_by");
+        data = await sqliteDB.get(entity, "id", data[0].id, "id,created_by");
         if (!data[0] || data[0]?.created_by != user.id) return result;
       }
 
