@@ -13,7 +13,7 @@ export default class UserController extends Controller {
 
   getLoggedInUser = async ({ user }, res, next) => {
     try {
-      res.json({ data: await this.db.query(this.selectQuery + " t1.id = $1", [user.id]) });
+      res.json({ data: await this.db.get(this.selectQuery + " t1.id = $1", [user.id]) });
     } catch (error) {
       next(error);
     }
@@ -24,7 +24,7 @@ export default class UserController extends Controller {
       query = new User(query);
       const { sql, values } = await this.db.prepareQuery(this.selectQuery, query, pagination, false, "t1.");
 
-      const data = await this.db.query(sql, values);
+      const data = await this.db.getAll(sql, values);
       const total = +data[0]?.total || 0;
       data.forEach((d) => delete d.total);
 
@@ -46,7 +46,7 @@ export default class UserController extends Controller {
         result.superuser,
         "t1."
       );
-      const data = await this.db.query(sql, values);
+      const data = await this.db.getAll(sql, values);
       const total = +data[0]?.total || 0;
       data.forEach((d) => delete d.total);
 
@@ -67,7 +67,7 @@ export default class UserController extends Controller {
       data.password_hash = await bcrypt.hash(body.password || crypto.randomBytes(8).toString("hex"), 10);
 
       const { sql, values } = this.db.prepareInsertQuery(this.entity, [data]);
-      res.json({ data: await this.db.query(sql + " RETURNING *", values) });
+      res.json({ data: await this.db.run(sql + " RETURNING *", values) });
     } catch (error) {
       next(error);
     }
@@ -85,13 +85,13 @@ export default class UserController extends Controller {
       if (body.password) data.password_hash = await bcrypt.hash(body.password, 10);
 
       if (data.type != "ADMIN") {
-        const user = (await this.db.get(this.entity, "id", body.id, "type"))[0];
+        const user = (await this.db.getByField(this.entity, "id", body.id, "type"))[0];
         if (user?.type == "APPLICANT") {
           return next("403-user type 'APPLICANT' can not have admin role");
         }
       }
 
-      await this.db.update(this.entity, data, params.id);
+      await this.db.updateById(this.entity, data, params.id);
 
       res.json({ success: true });
     } catch (error) {

@@ -62,7 +62,6 @@ $RECYCLE.BIN/
 *.pid.*
 
 # databases
-*.sql
 *.sqlite
 *.sqlite3
 backup

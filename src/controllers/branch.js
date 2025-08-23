@@ -12,10 +12,10 @@ export default class BranchController extends Controller {
   get = async ({ user, query, pagination }, res, next) => {
     try {
       const { sql, values } = this.db.prepareQuery(this.selectQuery, query, pagination);
-      const data = await this.db.query(sql, values);
+      const data = await this.db.getAll(sql, values);
       await Promise.all(
         data.map(async (item) => {
-          item.departments = +(await this.db.query(this.selectDepartmentQuery, [item.id]))[0]?.total || 0;
+          item.departments = +(await this.db.getAll(this.selectDepartmentQuery, [item.id]))[0]?.total || 0;
           return item;
         })
       );

@@ -18,7 +18,7 @@ class SqliteDB {
     this.exec = promisify(this.db.exec.bind(this.db));
     this.run = promisify(this.db.run.bind(this.db));
     this.get = promisify(this.db.get.bind(this.db));
-    this.all = promisify(this.db.all.bind(this.db));
+    this.getAll = promisify(this.db.all.bind(this.db));
     this.close = promisify(this.db.close.bind(this.db));
 
     this.#initializeDatabase();
@@ -52,9 +52,109 @@ class SqliteDB {
       console.error("Failed to initialize database and tables", error.message);
     }
   }
+
+  async create(entity, data, fields) {
+    let { sql, values } = this.prepareInsertQuery(entity, data);
+    return this.run(sql + (!fields ? "" : ` RETURNING ${fields}`), values);
+  }
+  async getById(entity, id, fields = "*") {
+    const invalidColumns = validateFields([...(fields == "*" ? [] : fields.split(","))]);
+    if (invalidColumns.length > 0) throw `400-Invalid fields names (${invalidColumns.join(", ")})`;
+    return this.get(`SELECT ${fields} FROM ${entity} WHERE id = ?`, id);
+  }
+  async getByField(entity, field, value, fields = "*") {
+    const invalidColumns = validateFields([field, ...(fields == "*" ? [] : fields.split(","))]);
+    if (invalidColumns.length > 0) throw `400-Invalid fields names (${invalidColumns.join(", ")})`;
+    return this.getAll(`SELECT ${fields} FROM ${entity} WHERE ${field} = ?`, [value]);
+  }
+  async updateById(entity, data, id, fields) {
+    let { sql, values } = this.prepareUpdateQuery(entity, data, id);
+    return this.run(sql + (!fields ? "" : ` RETURNING ${fields}`), values);
+  }
+  async softDelete(entity, id) {
+    return this.run(entity, { deleted_at: new Date().toISOString() }, id);
+  }
+  async deleteByField(entity, field, value) {
+    return this.run(`DELETE FROM ${entity} WHERE ${field} = ?`, [value]);
+  }
+
+  prepareInsertQuery(entity, data) {
+    if (!(data?.length > 0)) throw "400-'data' should be an array of items";
+    const error = validateData(data);
+    if (error) throw error;
+
+    const fields = Array.from(new Set(data.map((item) => Object.keys(item)).flat()));
+    const values = [];
+
+    const placeholders = data
+      .map((item) => {
+        values.push(...fields.map((f) => item[f] || null));
+        return `(${fields.map(() => `?`).join(",")})`;
+      })
+      .join(",");
+
+    const sql = `INSERT INTO ${entity} (${fields.join(",")}) VALUES ${placeholders}`;
+
+    return { sql, values };
+  }
+
+  prepareUpdateQuery(entity, data, id) {
+    const fields = Object.keys(data || {});
+    if (!(fields.length > 0)) throw "400-'data' should not be empty";
+    const error = validateData(data);
+    if (error) throw error;
+
+    const values = [];
+    const placeholders = fields
+      .map((f) => {
+        values.push(data[f]);
+        return `${f} = ?`;
+      })
+      .join(",");
+
+    let sql = `UPDATE ${entity} SET ${placeholders}`;
+
+    if (id) {
+      values.push(id);
+      sql += ` WHERE id = $${values.length}`;
+    }
+    return { sql, values };
+  }
+
+  prepareQuery(baseQuery, data, pagination, deleted, prefix = "") {
+    const error = validateData(data);
+    if (error) throw error;
+
+    const values = [];
+    const placeholders = Object.keys(data)
+      .map((k, i) => {
+        let v = data[k].value || data[k];
+        let op = data[k].operator;
+
+        if (k.includes("id") || columns[k] == "enum") {
+          values.push(v.split(","));
+          return `${prefix}${k} = IN (?)`;
+        }
+        const comparisonOperator = op ? op : `LIKE`;
+        values.push(v);
+        return `${prefix}${k} ${comparisonOperator} ?`;
+      })
+      .join(" AND ");
+
+    let sql = `${baseQuery} ${placeholders}`;
+
+    if (pagination) {
+      if (pagination.orderby) sql += ` ORDER BY ${prefix}${pagination.orderby}`;
+
+      values.push(pagination.limit || 0, pagination.offset || 0);
+      sql += ` LIMIT $${values.length - 1} OFFSET $${values.length}`;
+    }
+
+    return { sql, values };
+  }
 }
 
-const sqliteDB = new SqliteDB(path.resolve(process.cwd(), "backups/db.sqlite"));
+const sqliteDB = new SqliteDB(path.resolve(process.cwd(), process.env.DB_SQLITE_FILE));
 
 export default sqliteDB;
 

@@ -1,0 +1,2 @@
+DROP DATABASE IF EXISTS interior;
+DROP TYPE IF EXISTS blood_group

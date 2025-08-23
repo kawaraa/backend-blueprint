@@ -21,7 +21,7 @@ export default class PermissionController extends Controller {
   getMy = async ({ user }, res, next) => {
     try {
       const fields = "role_id,code,description,created_at";
-      const permissions = await this.db.get("permission", "role_id", user.role_id, fields);
+      const permissions = await this.db.getAll("permission", "role_id", user.role_id, fields);
       res.json({ data: permissions, total: permissions.length });
     } catch (error) {
       next(error);
@@ -45,7 +45,7 @@ export default class PermissionController extends Controller {
       const result = await checkPermission(user, "delete", this.entity);
       if (!result.permitted) return next("FORBIDDEN");
       const { sql, values } = this.db.prepareQuery(this.deleteQuery, params);
-      await this.db.query(sql, values);
+      await this.db.run(sql, values);
       res.json({ success: true });
     } catch (error) {
       next(error);

@@ -20,7 +20,7 @@ export default class DefaultController {
       // SELECT EXISTS(SELECT 1 FROM role WHERE id = 'xxx');
       // SELECT COUNT(\*) FROM permission WHERE role_id = 'xxx';
       const { sql, values } = this.db.prepareQuery(this.selectQuery, query, pagination);
-      const data = await this.db.query(sql, values);
+      const data = await this.db.getAll(sql, values);
       const total = +data[0]?.total || 0;
       data.forEach((d) => delete d.total);
 
@@ -37,7 +37,7 @@ export default class DefaultController {
       const result = await checkPermission(user, "view", this.entity, []);
 
       const { sql, values } = this.db.prepareQuery(this.selectQuery, query, pagination, result.superuser);
-      const data = await this.db.query(sql, values);
+      const data = await this.db.getAll(sql, values);
       const total = +data[0]?.total || 0;
       data.forEach((d) => delete d.total);
 
@@ -76,7 +76,7 @@ export default class DefaultController {
       delete data.identity_id;
       const result = await checkPermission(user, "edit", this.entity, [{ ...data, id: params.id }]);
       if (!result.permitted) return next("FORBIDDEN");
-      await this.db.update(this.entity, data, params.id);
+      await this.db.updateById(this.entity, data, params.id);
       res.json(data);
     } catch (error) {
       next(error);
@@ -87,14 +87,14 @@ export default class DefaultController {
     try {
       const result = await checkPermission(user, "delete", this.entity);
       if (!result.permitted) return next("FORBIDDEN");
-      if (!result.superuser) await this.db.softDelete(this.entity, params.id);
+      if (!result.superuser) await this.db.softDeleteById(this.entity, params.id);
       else {
         const doc = (await this.db.get("document", "reference_id", params.id))[0];
         if (doc) {
           await cleanUpOldFiles(path.resolve(doc.file_path));
-          await this.db.delete("document", "reference_id", params.id);
+          await this.db.deleteByField("document", "reference_id", params.id);
         }
-        await this.db.delete(this.entity, "id", params.id);
+        await this.db.deleteByField(this.entity, "id", params.id);
       }
       res.json({ success: true });
     } catch (error) {
@@ -106,7 +106,7 @@ export default class DefaultController {
     try {
       const result = await checkPermission(user, "edit", this.entity, [{ deleted_at: null }]);
       if (!result.permitted) return next("FORBIDDEN");
-      const data = await this.db.update(this.entity, { deleted_at: null }, params.id);
+      const data = await this.db.updateById(this.entity, { deleted_at: null }, params.id);
       res.json({ data });
     } catch (error) {
       next(error);

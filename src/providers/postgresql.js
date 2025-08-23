@@ -19,6 +19,32 @@ class PostgresqlDB {
       });
   }
 
+  exec = async (sqlQuery, params) => this.query(sqlQuery, params);
+  run = async (sqlQuery, params) => this.query(sqlQuery, params);
+  get = async (sqlQuery, params) => (await this.query(sqlQuery, params))[0];
+  getAll = async (sqlQuery, params) => this.query(sqlQuery, params);
+
+  async create(entity, data, fields) {
+    // data.forEach((d) => delete d.id);
+    let { sql, values } = this.prepareInsertQuery(entity, data);
+    return this.query(sql + (!fields ? "" : ` RETURNING ${fields}`), values);
+  }
+  async getByField(entity, field, value, fields = "*") {
+    const invalidColumns = validateFields([field, ...(fields == "*" ? [] : fields.split(","))]);
+    if (invalidColumns.length > 0) throw `400-Invalid fields names (${invalidColumns.join(", ")})`;
+    return this.query(`SELECT ${fields} FROM ${entity} WHERE ${field} = $1`, [value]);
+  }
+  async updateById(entity, data, id, fields) {
+    let { sql, values } = this.prepareUpdateQuery(entity, data, id);
+    return this.query(sql + (!fields ? "" : ` RETURNING ${fields}`), values);
+  }
+  async softDelete(entity, id) {
+    return this.update(entity, { deleted_at: new Date().toISOString() }, id);
+  }
+  async deleteByField(entity, field, value) {
+    return this.query(`DELETE FROM ${entity} WHERE ${field} = $1`, [value]);
+  }
+
   prepareInsertQuery(entity, data) {
     if (!(data?.length > 0)) throw "400-'data' should be an array of items";
     const error = validateData(data);
@@ -94,27 +120,6 @@ class PostgresqlDB {
     }
 
     return { sql, values };
-  }
-
-  async create(entity, data, fields) {
-    // data.forEach((d) => delete d.id);
-    let { sql, values } = this.prepareInsertQuery(entity, data);
-    return this.query(sql + (!fields ? "" : ` RETURNING ${fields}`), values);
-  }
-  async get(entity, field, value, fields = "*") {
-    const invalidColumns = validateFields([field, ...(fields == "*" ? [] : fields.split(","))]);
-    if (invalidColumns.length > 0) throw `400-Invalid fields names (${invalidColumns.join(", ")})`;
-    return this.query(`SELECT ${fields} FROM ${entity} WHERE ${field} = $1`, [value]);
-  }
-  async update(entity, data, id, fields) {
-    let { sql, values } = this.prepareUpdateQuery(entity, data, id);
-    return this.query(sql + (!fields ? "" : ` RETURNING ${fields}`), values);
-  }
-  async softDelete(entity, id) {
-    return this.update(entity, { deleted_at: new Date().toISOString() }, id);
-  }
-  async delete(entity, field, value) {
-    return this.query(`DELETE FROM ${entity} WHERE ${field} = $1`, [value]);
   }
 
   // #getOperator(key){
