@@ -9,7 +9,7 @@ export default class DefaultController {
     this.db = sqliteDB;
     this.entity = entity;
     this.createQuery = `INSERT INTO ${entity} `;
-    this.selectQuery = `SELECT *, COUNT(*) OVER() AS total FROM ${this.entity} WHERE`;
+    this.selectQuery = `SELECT *, COUNT(*) AS total FROM ${this.entity} WHERE`;
     // this.updateQuery = `UPDATE ${this.entity} SET`;
     this.deleteQuery = `DELETE FROM ${this.entity} WHERE`;
   }
