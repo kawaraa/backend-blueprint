@@ -27,6 +27,7 @@ class SqliteDB {
   async #initializeDatabase() {
     try {
       await this.exec(`
+        PRAGMA foreign_keys = ON;
         PRAGMA journal_mode = WAL;
         PRAGMA cache_size = -20000;
         PRAGMA mmap_size = 200000;
@@ -37,7 +38,14 @@ class SqliteDB {
       // ❌ synchronous = FULL; if it's financial, medical transactions
 
       const script = readFileSync(path.resolve(process.cwd(), "scripts/database/schema.sql"), "utf-8");
-      await this.run(script);
+      await this.exec(script);
+
+      if (!(await this.get("SELECT id FROM users"))) {
+        const script = readFileSync(path.resolve(process.cwd(), "scripts/database/query.sql"), "utf-8");
+        await this.exec(script);
+      }
+
+      // await this.run(`INSERT INTO users (name, email) VALUES (?,?)`, ["Alice", "alice@example.com"]);
 
       console.log("Initialized database and tables.");
     } catch (error) {
@@ -46,7 +54,7 @@ class SqliteDB {
   }
 }
 
-const sqliteDB = new SqliteDB(path.resolve(process.cwd(), "db.sqlite"));
+const sqliteDB = new SqliteDB(path.resolve(process.cwd(), "backups/db.sqlite"));
 
 export default sqliteDB;
 
