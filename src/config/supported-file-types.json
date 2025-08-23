@@ -1,0 +1,41 @@
+[
+  { "ex": ".jpg", "mime": "image/jpeg" },
+  { "ex": ".jpeg", "mime": "image/jpeg" },
+  { "ex": ".png", "mime": "image/png" },
+  { "ex": ".gif", "mime": "image/gif" },
+  { "ex": ".webp", "mime": "image/webp" },
+  { "ex": ".svg", "mime": "image/svg+xml" },
+  { "ex": ".bmp", "mime": "image/bmp" },
+  { "ex": ".tiff", "mime": "image/tiff" },
+  { "ex": ".ico", "mime": "image/x-icon" },
+
+  { "ex": ".pdf", "mime": "application/pdf" },
+  { "ex": ".doc", "mime": "application/msword" },
+  {
+    "ex": ".docx",
+    "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  },
+  { "ex": ".xls", "mime": "application/vnd.ms-excel" },
+  { "ex": ".xlsx", "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+  { "ex": ".ppt", "mime": "application/vnd.ms-powerpoint" },
+  {
+    "ex": ".pptx",
+    "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+  },
+  { "ex": ".txt", "mime": "text/plain" },
+  { "ex": ".csv", "mime": "text/csv" },
+  { "ex": ".rtf", "mime": "application/rtf" },
+  { "ex": ".odt", "mime": "application/vnd.oasis.opendocument.text" },
+  { "ex": ".ods", "mime": "application/vnd.oasis.opendocument.spreadsheet" },
+  { "ex": ".odp", "mime": "application/vnd.oasis.opendocument.presentation" },
+
+  { "ex": ".zip", "mime": "application/zip" },
+  { "ex": ".rar", "mime": "application/vnd.rar" },
+  { "ex": ".7z", "mime": "application/x-7z-compressed" },
+  { "ex": ".tar", "mime": "application/x-tar" },
+  { "ex": ".gz", "mime": "application/gzip" },
+  { "ex": ".bz2", "mime": "application/x-bzip2" },
+  { "ex": ".xz", "mime": "application/x-xz" },
+  { "ex": ".iso", "mime": "application/x-iso9660-image" },
+  { "ex": ".dmg", "mime": "application/x-apple-diskimage" }
+]

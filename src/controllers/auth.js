@@ -1,0 +1,54 @@
+import Controller from "./default.js";
+import postgresqlDB from "../providers/postgresql.js";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+import User from "../models/user.js";
+// Prevent brute-force attacks (e.g. with express-rate-limit).
+
+const secret = process.env.JWT_SECRET;
+const secure = process.env.NODE_ENV === "production";
+const maxAge = 8 * 60 * 60 * 1000; // expires in 8hrs
+
+export default class AuthController extends Controller {
+  constructor(entity, softDelete) {
+    super(entity, softDelete);
+    this.fieldsForJWT =
+      "id,identity_id,name,username,type,role_id,role_assignor,branch_id,status,last_login,password_hash";
+  }
+
+  register = async ({ body: { name, username, password } }, res, next) => {
+    try {
+      const data = { name, username, type: "APPLICANT", password_hash: await bcrypt.hash(password, 10) };
+      const user = (await postgresqlDB.create("users", [data], "id"))[0];
+      await postgresqlDB.update("users", { created_by: user.id }, user.id);
+      res.json({ data: [user] });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  login = async (req, res, next) => {
+    try {
+      const { username, password } = req.body;
+      const user = (await postgresqlDB.get("users", "username", username, this.fieldsForJWT))[0];
+      if (!user || !(await bcrypt.compare(password, user.password_hash))) return next("UNAUTHORIZED");
+      delete user.password_hash;
+
+      const token = jwt.sign(user, secret, { expiresIn: maxAge });
+      res.cookie("accessToken", token, { httpOnly: true, secure, maxAge, sameSite: "strict" });
+      res.json({ accessToken: token });
+      const sql = `UPDATE users SET last_login = $1 WHERE username = $2`;
+      postgresqlDB.query(sql, [new Date().toISOString(), username]).catch(() => null);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  logout = async (req, res) => {
+    res.cookie("accessToken", null, { httpOnly: true, secure, maxAge, sameSite: "strict" });
+    res.json({ success: true });
+  };
+  hash = async (req, res) => {
+    res.json({ hash: await bcrypt.hash(req.params.password, 10) });
+  };
+}
