@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node src/main.js",
     "dev": "nodemon src/main.js",
-    "test": "jest --coverage"
+    "test": "jest --coverage",
+    "deploy": "strapi deploy"
   },
   "repository": {
     "type": "git",

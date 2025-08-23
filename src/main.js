@@ -54,7 +54,8 @@ app.use(errorHandlerMiddleware);
 // subject.notify("Hello observers!");
 
 app.listen(port, (error) => {
-  if (!error) return console.log(`Server running on http://localhost:${port}`);
+  const logs = `Server running on http://localhost:${port} in ${process.env.NODE_ENV} mode`;
+  if (!error) return console.log(logs);
   console.log("Failed to start server:", error);
   process.exit(1);
 });

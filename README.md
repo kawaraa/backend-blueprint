@@ -1,4 +1,4 @@
-# backend-blueprint Source Code folders and files structure
+# Project Source Code folders and files structure
 
 Structuring the folders and files in your backend project is crucial for maintaining a clean and organized codebase. While there's no one-size-fits-all solution, a well-thought-out structure makes it easier for developers to understand, maintain, and scale the application. Here's a common approach for structuring a backend project
 
