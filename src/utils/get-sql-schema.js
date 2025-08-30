@@ -1,0 +1,59 @@
+import { access, readFileSync } from "node:fs";
+import path from "node:path";
+import Normalizer from "k-utilities/normalizer.js";
+const scriptPath = path.resolve("scripts/database/schema.sql");
+
+function extractSchema(sqlScriptLines) {
+  // The string contains only lowercase letters (a-z) and underscores (_):
+  const isField = (field) => field && /^[a-z_]+$/.test(field);
+  const numberRegEx = /INTEGER|FLOAT|SERIAL|SMALLINT/gim;
+  const dateRegEx = /DATE|TIMESTAMP/gim;
+  const schema = {};
+  let entity = null;
+
+  sqlScriptLines.forEach((line) => {
+    if (!line.startsWith("--") && line.includes("CREATE TABLE")) {
+      entity = line.split("(")[0].trim().split(" ").at(-1);
+      const apiConfig = line.split("{")[1]?.split("}")[0]?.trim() || null; // if accessible via API
+      if (apiConfig) {
+        const [endpoint, rule] = apiConfig.split(":");
+        schema[entity] = { endpoint, rule, fields: {} };
+      }
+      return;
+    }
+
+    if (!entity || !schema[entity]?.endpoint) return;
+
+    const field = line.trim().split(" ")[0].trim() || null;
+    let type = "";
+    const defaultType = "string-250";
+
+    if (field && isField(field)) {
+      const length = Normalizer.extractNumbers(line);
+      if (line.match(numberRegEx)) type = "number";
+      else if (line.match(dateRegEx)) type = "date";
+      else if (line.includes("BOOLEAN")) type = "boolean";
+      else if (line.includes("BYTEA")) type = "buffer";
+      else if (line.includes("enum")) type = "enum";
+
+      type = !type ? defaultType : type + (!length ? "" : `-${length}`);
+      const immutable = line.includes("immutable");
+
+      schema[entity].fields[field] = { type, immutable };
+    }
+  });
+
+  return schema;
+}
+
+function getAllFields(schema) {
+  const allFields = [];
+  for (const key in schema) {
+    allFields.push(Object.keys(schema[key].fields));
+  }
+
+  return Array.from(new Set(allFields.flat()));
+}
+
+export const schema = extractSchema(readFileSync(scriptPath, "UTF-8").split("\n"));
+export const allFields = getAllFields(schema);

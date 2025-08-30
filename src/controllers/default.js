@@ -1,5 +1,5 @@
 import sqliteDB from "../providers/sqlite.js";
-import checkPermission from "../config/rbac-check.js";
+import { checkBranch, checkPermission } from "../config/rbac-check.js";
 import { removeImmutableFields } from "../utils/validators/sql-query-validator.js";
 import { cleanUpOldFiles } from "../services/all.js";
 import path from "node:path";
@@ -7,11 +7,32 @@ import path from "node:path";
 export default class DefaultController {
   constructor(entity) {
     this.db = sqliteDB;
+    this.checkPermission = checkPermission;
+    this.checkBranch = checkBranch;
     this.entity = entity;
-    this.createQuery = `INSERT INTO ${entity} `;
+    this.insertQuery = `INSERT INTO ${entity} `;
     this.selectQuery = `SELECT *, COUNT(*) AS total FROM ${this.entity} WHERE`;
     // this.updateQuery = `UPDATE ${this.entity} SET`;
     this.deleteQuery = `DELETE FROM ${this.entity} WHERE`;
+  }
+
+  async #checkWriteAccess(user, parentId, id) {
+    const { rule, fields } = this.db.validator.schema[this.entity];
+    if (rule == "allUsers" || (rule == "superuser" && (await this.db.hasPermission(user.role_id)))) {
+      return null;
+    }
+    if (fields["branch_id"]) return user.branch_id;
+    else await this.checkBranch(user.branch_id, parentId, this.entity, id);
+    return null;
+  }
+  async #checkReadAccess(user, query) {
+    const { rule, fields } = this.db.validator.schema[this.entity];
+    if (rule == "allUsers" || (rule == "superuser" && (await this.db.hasPermission(user.role_id)))) {
+      return query;
+    }
+    if (fields["branch_id"]) query.branch_id = user.branch_id;
+    else await this.checkBranch(user.branch_id, query.identity_id, this.entity, query.id);
+    return query;
   }
 
   get = async ({ user, query, pagination }, res, next) => {

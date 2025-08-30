@@ -2,8 +2,7 @@
 import express from "express";
 import defaultSubRoutes from "./default.js";
 import DefaultController from "../controllers/default.js";
-
-const routePaths = ["role", "permission", "users", "branch", "department", "translation"];
+import { schema } from "../utils/get-sql-schema.js";
 
 // Additional global middleware or routes can be defined here
 
@@ -17,11 +16,11 @@ async function loadModule(path, fallback) {
 }
 
 async function addRoutes(router) {
-  for (const routePath of routePaths) {
-    const entity = routePath.replaceAll("-", "_").toLowerCase();
-    const subRoutes = await loadModule(`./${routePath}.js`, defaultSubRoutes);
-    const Controller = await loadModule(`../controllers/${routePath}.js`, DefaultController);
-    router.use(`/${routePath}`, subRoutes(new Controller(entity)));
+  for (const entity in schema) {
+    const path = schema[entity].endpoint;
+    const subRoutes = await loadModule(`./${path}.js`, defaultSubRoutes);
+    const Controller = await loadModule(`../controllers/${path}.js`, DefaultController);
+    router.use(`/${path}`, subRoutes(new Controller(entity)));
   }
   return router;
 }

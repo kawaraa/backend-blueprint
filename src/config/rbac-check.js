@@ -1,17 +1,15 @@
 // Role-Based Access Control check Permission Function
-import sqliteDB from "../providers/sqlite.js";
+import db from "../providers/sqlite.js";
 
+// Role-Based Access Control check Permission Function
 // permission syntax: "action:entity:who:field"
-async function checkPermission(user, action, entity, data = []) {
+export async function checkPermission(user, action, entity, data = []) {
   const result = { permitted: false, data: [], superuser: false };
+  const roleId = user?.role_id;
 
-  if (!user || !user.role_id) return result;
+  if (!roleId) return result;
 
-  const permissions = await sqliteDB.query(
-    "SELECT permission.code FROM role JOIN permission ON role.id = permission.role_id WHERE role.id = $1",
-    [user.role_id]
-  );
-
+  const permissions = await db.query("SELECT code FROM  permission WHERE role_id = $1", [roleId]);
   if (permissions.length < 1) return result;
 
   for (const { code } of permissions) {
@@ -25,7 +23,7 @@ async function checkPermission(user, action, entity, data = []) {
     if (code == `${action}:${entity}:self:*`) {
       if (action == "delete") return result;
       if (action == "edit") {
-        data = await sqliteDB.get(entity, "id", data[0].id, "id,created_by");
+        data = await db.get(entity, "id", data[0].id, "id,created_by");
         if (!data[0] || data[0]?.created_by != user.id) return result;
       }
 
@@ -55,4 +53,7 @@ async function checkPermission(user, action, entity, data = []) {
   return result;
 }
 
-export default checkPermission;
+export async function checkBranch(userBranchId, parentId, entity, id) {
+  const error = "FORBIDDEN-user can not access items in other branch.";
+  if ((!parentId && !id) || (await db.getBranchId(parentId, entity, id)) != userBranchId) throw error;
+}

@@ -1,7 +1,7 @@
 import Controller from "./default.js";
 import crypto from "node:crypto";
 import bcrypt from "bcrypt";
-import checkPermission from "../config/rbac-check.js";
+import { checkPermission } from "../config/rbac-check.js";
 import User from "../models/user.js";
 
 export default class UserController extends Controller {

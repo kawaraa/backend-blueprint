@@ -1,4 +1,4 @@
-import checkPermission from "../config/rbac-check.js";
+import { checkPermission } from "../config/rbac-check.js";
 import Controller from "./default.js";
 
 export default class BranchController extends Controller {

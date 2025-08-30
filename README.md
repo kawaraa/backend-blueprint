@@ -39,3 +39,13 @@ Structuring the folders and files in your backend project is crucial for maintai
 - **Separation of Concerns:** Keep concerns separated. For example, separate route definitions from business logic.
 - **Scalability:** Plan for scalability from the beginning. A good structure accommodates the growth of your project.
 - **Keep It Simple:** Avoid overengineering. Keep the structure simple and adjust it as needed.
+
+## (Important)
+
+**RBAC declaration syntax should be like this: {endpoint:rule}**
+
+- `{users:superuser}` mean only the superuser can see and update all users
+- `{contact:user}` mean the superuser and the user who created it can see and update the contact
+- `{input-field:branch}` mean is the superuser or users with type ADMIN in the same branch can see and update the input_field
+- `{translation:allUsers}` mean all logged in users can see and only the superuser can update the translation
+- `{product:public}` mean it's public and just the superuser and the user who created it can see and update the product

@@ -1,5 +1,5 @@
 import Controller from "./default.js";
-import checkPermission from "../config/rbac-check.js";
+import { checkPermission } from "../config/rbac-check.js";
 import Permission from "../models/permission.js";
 const permissions = jsonRequire("src/config/permissions.json");
 
