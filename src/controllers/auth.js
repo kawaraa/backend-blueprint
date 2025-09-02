@@ -48,6 +48,7 @@ export default class AuthController extends Controller {
     res.cookie("accessToken", null, { httpOnly: true, secure, maxAge, sameSite: "strict" });
     res.json({ success: true });
   };
+
   hash = async (req, res) => {
     res.json({ hash: await bcrypt.hash(req.params.password, 10) });
   };

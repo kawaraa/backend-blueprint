@@ -1,9 +1,8 @@
-
 -- RBAC declaration syntax should be like this: {endpoint:rule:parent}
 -- "{users:superuser}" means only the superuser can see and update all users
--- "{contact:user:users}" means the superuser and the user who created it can see and update the contact
--- "{product:user}" means just the superuser and the user who created it can see and update the product
--- "{variant:user:product}" third part means the parent of this item is "product" entity
+-- "{settings:user}" means just the superuser and the user who created it can see and update the settings
+-- {citizen:branch} means the superuser and users with type ADMIN in the same branch can see and update the citizen
+-- "{contact:branch:citizen}" third part means the parent of this item is "citizen" entity
 -- "{translation:allUsers}" means all logged in users can see and only the superuser can update the translation
 -- When a table contain "public" column, it means visitors can see it when it's true.
 
@@ -74,7 +73,31 @@ CREATE TABLE IF NOT EXISTS branch ( -- {branch:superuser}
 -- ALTER TABLE users ADD CONSTRAINT fk_users_role_id FOREIGN KEY (role_id) REFERENCES role(id);
 -- ALTER TABLE users ADD CONSTRAINT fk_users_branch_id FOREIGN KEY (branch_id) REFERENCES branch(id);
 
-CREATE TABLE contact ( -- {contact:user:user}
+CREATE TABLE IF NOT EXISTS settings ( -- {settings:user}
+  id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
+  parent_id INTEGER NOT NULL, -- immutable
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
+  created_by INTEGER NOT NULL, -- immutable
+  FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS citizen ( -- {citizen:branch}
+  id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
+  name VARCHAR(255) NOT NULL,
+  status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE' CHECK(status IN (
+    'ACTIVE', 'ABROAD', 'DETAINED', 'WANTED'
+  )),
+  note TEXT,
+  branch_id INTEGER,  -- Which branch this item belongs to
+  created_by INTEGER NOT NULL, -- immutable
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (branch_id) REFERENCES branch(id),
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE contact ( -- {contact:branch:citizen}
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
   parent_id INTEGER NOT NULL, -- immutable 
   type VARCHAR(100) NOT NULL,
@@ -86,11 +109,11 @@ CREATE TABLE contact ( -- {contact:user:user}
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP,
-  FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_id) REFERENCES citizen(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
-CREATE TABLE address ( -- {address:user:user}
+CREATE TABLE address ( -- {address:branch:citizen}
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
   parent_id INTEGER NOT NULL, -- immutable
   country VARCHAR(50) NOT NULL,
@@ -104,43 +127,8 @@ CREATE TABLE address ( -- {address:user:user}
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP,
-  FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_id) REFERENCES citizen(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id)
-);
-
-CREATE TABLE IF NOT EXISTS product ( -- {product:user}
-  id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
-  parent_id INTEGER,
-  name VARCHAR(255) NOT NULL,
-  description TEXT,
-  sku VARCHAR(100) UNIQUE,  -- Stock Keeping Unit
-  category VARCHAR(50) NOT NULL CHECK(category IN (
-    'ELECTRONICS', 'CLOTHING', 'FOOD', 'BOOKS', 'FURNITURE', 'OTHER'
-  )),
-  price DECIMAL(10, 2) NOT NULL CHECK(price >= 0),
-  cost DECIMAL(10, 2) CHECK(cost >= 0),  -- Cost price
-  quantity INTEGER NOT NULL DEFAULT 0 CHECK(quantity >= 0),
-  min_stock_level INTEGER DEFAULT 0 CHECK(min_stock_level >= 0),
-  weight_kg DECIMAL(8, 3) CHECK(weight_kg >= 0),  -- Product weight in kilograms
-  dimensions VARCHAR(250),  -- Format: "LxWxH" (e.g., "10.5x8.2x3.0")
-  supplier_id VARCHAR(100),  -- Reference to a suppliers table (if you have one)
-  status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE' CHECK(status IN (
-    'ACTIVE', 'DISCONTINUED', 'OUT_OF_STOCK', 'COMING_SOON'
-  )),
-  public BOOLEAN DEFAULT FALSE,
-  branch_id INTEGER,  -- Which branch this product belongs to
-  created_by INTEGER NOT NULL, -- immutable
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (branch_id) REFERENCES branch(id),
-  FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (created_by) REFERENCES users(id)
-);
-
-CREATE TABLE IF NOT EXISTS variant ( -- {variant:user:product}
-  id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
-  parent_id INTEGER,
-  FOREIGN KEY (parent_id) REFERENCES product(id) ON DELETE CASCADE
 );
 
 
@@ -188,6 +176,7 @@ CREATE TABLE input_field ( -- {input-field:allUsers}
 );
 
 
+
 -- Triggers in SQLITE:
 
 -- Generating UUID for branch table.
@@ -197,18 +186,14 @@ CREATE TABLE input_field ( -- {input-field:allUsers}
 -- END;
 
 -- Update the updated_at timestamp
-CREATE TRIGGER IF NOT EXISTS product_updated_at_trigger
-AFTER UPDATE ON product
+CREATE TRIGGER IF NOT EXISTS citizen_updated_at_trigger
+AFTER UPDATE ON citizen
 FOR EACH ROW
 BEGIN
-  UPDATE product 
+  UPDATE citizen 
   SET updated_at = CURRENT_TIMESTAMP 
   WHERE id = NEW.id;
 END;
 
-CREATE INDEX IF NOT EXISTS idx_product_category ON product(category);
-CREATE INDEX IF NOT EXISTS idx_product_status ON product(status);
-CREATE INDEX IF NOT EXISTS idx_product_branch_id ON product(branch_id);
-CREATE INDEX IF NOT EXISTS idx_product_sku ON product(sku);
 CREATE INDEX IF NOT EXISTS idx_translation_article ON translation(article);
 CREATE INDEX IF NOT EXISTS idx_input_field_form ON input_field(form);

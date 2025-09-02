@@ -1,5 +1,5 @@
 import Validator from "k-utilities/validator.js";
-import { schema, allFields } from "./get-sql-schema.js";
+import { schema, allFields } from "../config/sql-schema.js";
 
 export default class DBValidator {
   static schema = schema;

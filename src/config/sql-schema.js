@@ -17,7 +17,7 @@ function extractSchema(sqlScriptLines) {
       const apiConfig = line.split("{")[1]?.split("}")[0]?.trim() || null; // if accessible via API
       if (apiConfig) {
         const [endpoint, rule] = apiConfig.split(":");
-        schema[entity] = { endpoint, rule, fields: {} };
+        schema[entity] = { endpoint, public: false, rule, fields: {} };
       }
       return;
     }
@@ -29,6 +29,8 @@ function extractSchema(sqlScriptLines) {
     const defaultType = "string-250";
 
     if (field && isField(field)) {
+      if (field == "public") schema[entity].public = true;
+
       const length = Normalizer.extractNumbers(line);
       if (line.match(numberRegEx)) type = "number";
       else if (line.match(dateRegEx)) type = "date";
@@ -47,12 +49,8 @@ function extractSchema(sqlScriptLines) {
 }
 
 function getAllFields(schema) {
-  const allFields = [];
-  for (const key in schema) {
-    allFields.push(Object.keys(schema[key].fields));
-  }
-
-  return Array.from(new Set(allFields.flat()));
+  const allFields = Object.keys(schema).flatMap((entity) => Object.keys(schema[entity].fields));
+  return Array.from(new Set(allFields));
 }
 
 export const schema = extractSchema(readFileSync(scriptPath, "UTF-8").split("\n"));

@@ -2,7 +2,7 @@
 import express from "express";
 import defaultSubRoutes from "./default.js";
 import DefaultController from "../controllers/default.js";
-import { schema } from "../utils/get-sql-schema.js";
+import { schema } from "../config/sql-schema.js";
 
 // Additional global middleware or routes can be defined here
 
@@ -20,8 +20,9 @@ async function addRoutes(router) {
     const path = schema[entity].endpoint;
     const subRoutes = await loadModule(`./${path}.js`, defaultSubRoutes);
     const Controller = await loadModule(`../controllers/${path}.js`, DefaultController);
-    router.use(`/${path}`, subRoutes(new Controller(entity)));
+    router.use(`/api/${path}`, subRoutes(new Controller(entity), schema[entity].public));
   }
+
   return router;
 }
 

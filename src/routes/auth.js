@@ -8,7 +8,7 @@ const validateIncomingRequest = async (req, res, next) => {
   const user = { ipAddress: req.ip || req.connection.remoteAddress, agent: req.get("User-Agent") };
   const request = failureAttempts.get(user.ipAddress);
   req.user = user;
-  if (request && request.attempts > 3 && Date.now() - request.lockedUntil < 0) {
+  if (request && request.attempts > 10 && Date.now() - request.lockedUntil < 0) {
     return next("TOO_MANY_REQUESTS-Too many attempts, please try again later.");
   }
   next();
@@ -22,9 +22,8 @@ const catchFailingAttempts = async (err, { user }, res, next) => {
   next(err);
 };
 
-export default (entity) => {
-  const router = express.Router();
-  const controller = new AuthController(entity);
+function addRoutes(router) {
+  const controller = new AuthController();
   router.use(validateIncomingRequest);
   router.post("/register", controller.register);
   router.post("/login", controller.login);
@@ -33,4 +32,6 @@ export default (entity) => {
   router.use(catchFailingAttempts);
 
   return router;
-};
+}
+
+export default addRoutes(express.Router());

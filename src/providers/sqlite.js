@@ -2,13 +2,14 @@ import sqlite3 from "sqlite3";
 import path from "path";
 import { readFileSync } from "fs";
 import { promisify } from "node:util";
-import { columns, validateData, validateFields } from "../utils/validators/sql-query-validator.js";
+import DBValidator from "../utils/db-validator.js";
 
 class SqliteDB {
   constructor(filename) {
     // Connect to database (or create if it doesn't exist)
     // filename = ":memory:" create the database in RAM disappears when the process ends or the connection is closed
 
+    this.validator = DBValidator;
     this.db = new sqlite3.Database(filename, (err) => {
       if (err) console.error("Failed to connect to the SQLite database", err.message);
       else console.log("Connected to SQLite:");
@@ -17,7 +18,7 @@ class SqliteDB {
     // Promisify common functions
     this.exec = promisify(this.db.exec.bind(this.db));
     this.run = promisify(this.db.run.bind(this.db));
-    this.get = promisify(this.db.get.bind(this.db));
+    this.getOne = promisify(this.db.get.bind(this.db));
     this.getAll = promisify(this.db.all.bind(this.db));
     this.close = promisify(this.db.close.bind(this.db));
 
@@ -40,7 +41,7 @@ class SqliteDB {
       const script = readFileSync(path.resolve(process.cwd(), "scripts/database/schema.sql"), "utf-8");
       await this.exec(script);
 
-      if (!(await this.get("SELECT id FROM users"))) {
+      if (!(await this.getOne("SELECT id FROM users"))) {
         const script = readFileSync(path.resolve(process.cwd(), "scripts/database/query.sql"), "utf-8");
         await this.exec(script);
       }
@@ -53,83 +54,91 @@ class SqliteDB {
     }
   }
 
+  async getBranchId(parentId, parentEntity, childEntity, childId) {
+    if (parentId) {
+      return (await this.getOne(parentEntity, "id", parentId, "branch_id"))[0]?.branch_id;
+    } else {
+      const q = `SELECT t1.branch_id FROM ${parentEntity} t1 JOIN ${childEntity} t2 ON t1.id = t2.parent_id WHERE t2.id = ?`;
+      return (await this.query(q, [childId]))[0]?.branch_id;
+    }
+  }
+
   async create(entity, data, fields) {
     let { sql, values } = this.prepareInsertQuery(entity, data);
     return this.run(sql + (!fields ? "" : ` RETURNING ${fields}`), values);
   }
   async getById(entity, id, fields = "*") {
-    const invalidColumns = validateFields([...(fields == "*" ? [] : fields.split(","))]);
-    if (invalidColumns.length > 0) throw `400-Invalid fields names (${invalidColumns.join(", ")})`;
-    return this.get(`SELECT ${fields} FROM ${entity} WHERE id = ?`, id);
+    const invalidColumns = this.validator.validateFields([...(fields == "*" ? [] : fields.split(","))]);
+    if (invalidColumns.length > 0) throw `BAD_REQUEST-Invalid fields names (${invalidColumns.join(", ")})`;
+    return this.getOne(`SELECT ${fields} FROM ${entity} WHERE id = ?`, id);
   }
   async getByField(entity, field, value, fields = "*") {
-    const invalidColumns = validateFields([field, ...(fields == "*" ? [] : fields.split(","))]);
-    if (invalidColumns.length > 0) throw `400-Invalid fields names (${invalidColumns.join(", ")})`;
+    const theFields = [field, ...(fields == "*" ? [] : fields.split(","))];
+    const invalidColumns = this.validator.validateFields(theFields);
+    if (invalidColumns.length > 0) throw `BAD_REQUEST-Invalid fields names (${invalidColumns.join(", ")})`;
     return this.getAll(`SELECT ${fields} FROM ${entity} WHERE ${field} = ?`, [value]);
   }
-  async updateById(entity, data, id, fields) {
-    let { sql, values } = this.prepareUpdateQuery(entity, data, id);
+  async get(entity, params, fields = "*") {
+    this.validator.validateData(params);
+    const invalidColumns = this.validator.validateFields(fields == "*" ? [] : fields.split(","));
+    if (invalidColumns.length > 0) throw `BAD_REQUEST-Invalid fields names (${invalidColumns.join(", ")})`;
+    const { placeholders, values } = this.#convertObjectToQuery(params);
+    return this.getAll(`SELECT ${fields} FROM ${entity} WHERE ${placeholders}`, values);
+  }
+  async update(entity, data, params, fields) {
+    let { sql, values } = this.prepareUpdateQuery(entity, data, params);
     return this.run(sql + (!fields ? "" : ` RETURNING ${fields}`), values);
   }
-  async softDelete(entity, id) {
-    return this.run(entity, { deleted_at: new Date().toISOString() }, id);
+  async softDelete(entity, params) {
+    return this.updateByField(entity, { deleted_at: new Date().toISOString() }, params);
   }
-  async deleteByField(entity, field, value) {
-    return this.run(`DELETE FROM ${entity} WHERE ${field} = ?`, [value]);
+  async deleteByField(entity, params) {
+    const { placeholders, values } = this.#convertObjectToQuery(params);
+    return this.run(`DELETE FROM ${entity} WHERE ${placeholders}`, values);
   }
 
   prepareInsertQuery(entity, data) {
     if (!(data?.length > 0)) throw "400-'data' should be an array of items";
+    if (data.length > 100) throw "400-Bulk operation can not be more than 100 items";
+
     const error = validateData(data);
     if (error) throw error;
 
-    const fields = Array.from(new Set(data.map((item) => Object.keys(item)).flat()));
-    const values = [];
-
-    const placeholders = data
-      .map((item) => {
-        values.push(...fields.map((f) => item[f] || null));
-        return `(${fields.map(() => `?`).join(",")})`;
-      })
-      .join(",");
+    const { placeholders, values, fields } = this.#convertObjectToQuery(data, ",", "insert");
 
     const sql = `INSERT INTO ${entity} (${fields.join(",")}) VALUES ${placeholders}`;
 
     return { sql, values };
   }
 
-  prepareUpdateQuery(entity, data, id) {
+  prepareUpdateQuery(entity, data, params) {
     const fields = Object.keys(data || {});
     if (!(fields.length > 0)) throw "400-'data' should not be empty";
     const error = validateData(data);
     if (error) throw error;
 
-    const values = [];
-    const placeholders = fields
-      .map((f) => {
-        values.push(data[f]);
-        return `${f} = ?`;
-      })
-      .join(",");
+    const { placeholders, values } = this.#convertObjectToQuery(data, ",");
 
     let sql = `UPDATE ${entity} SET ${placeholders}`;
 
-    if (id) {
-      values.push(id);
-      sql += ` WHERE id = $${values.length}`;
+    if (params) {
+      const p = this.#convertObjectToQuery(params, ",");
+      values.push(...p.values);
+      sql += ` WHERE ${p.placeholders}`;
     }
     return { sql, values };
   }
 
-  prepareQuery(baseQuery, data, pagination, deleted, prefix = "") {
-    const error = validateData(data);
+  prepareSelectQuery(baseQuery, params, pagination, deleted, prefix = "") {
+    const error = validateData(params);
+    const fields = this.validator.schema[entity].fields;
     if (error) throw error;
 
-    const values = [];
-    const placeholders = Object.keys(data)
+    fields = Object.keys(params);
+    placeholders = fields
       .map((k, i) => {
-        let v = data[k].value || data[k];
-        let op = data[k].operator;
+        let v = params[k].value || params[k];
+        let op = params[k].operator;
 
         if (k.includes("id") || columns[k] == "enum") {
           values.push(v.split(","));
@@ -139,18 +148,55 @@ class SqliteDB {
         values.push(v);
         return `${prefix}${k} ${comparisonOperator} ?`;
       })
-      .join(" AND ");
+      .join(separator);
+    //
 
-    let sql = `${baseQuery} ${placeholders}`;
-
-    if (pagination) {
-      if (pagination.orderby) sql += ` ORDER BY ${prefix}${pagination.orderby}`;
-
-      values.push(pagination.limit || 0, pagination.offset || 0);
-      sql += ` LIMIT $${values.length - 1} OFFSET $${values.length}`;
+    if (!fields.deleted_at) baseQuery += ` ${placeholders}`;
+    else {
+      if (placeholders) placeholders = "AND " + placeholders;
+      baseQuery += ` ${prefix}deleted_at IS ${deleted ? "NOT" : ""} NULL ${placeholders}`;
     }
 
-    return { sql, values };
+    if (pagination) {
+      if (pagination.orderby) baseQuery += ` ORDER BY ${prefix}${pagination.orderby}`;
+
+      values.push(pagination.limit || 0, pagination.offset || 0);
+      baseQuery += ` LIMIT $${values.length - 1} OFFSET $${values.length}`;
+    }
+
+    return { sql: baseQuery, values };
+  }
+
+  convertFieldsToQuery(fields, prefix = "") {
+    if (fields.length < 1) return prefix + "*";
+    return prefix + fields.join(`,${prefix}`).trim();
+  }
+
+  #convertObjectToQuery(object, separator = ",", type) {
+    const values = [];
+    let placeholders = [];
+    let fields = [];
+
+    if (type == "insert") {
+      fields = Array.from(new Set(object.flatMap((item) => Object.keys(item))));
+      placeholders = object
+        .map((item) => {
+          values.push(...fields.map((f) => item[f] || null));
+          return `(${fields.map(() => `?`).join(",")})`;
+        })
+        .join(separator);
+      //
+    } else {
+      fields = Object.keys(object);
+      placeholders = fields
+        .map((key) => {
+          values.push(object[key]);
+          return `${key} = ?`;
+        })
+        .join(separator);
+    }
+
+    return { placeholders, values };
   }
 }
 

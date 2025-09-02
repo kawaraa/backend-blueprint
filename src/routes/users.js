@@ -13,10 +13,10 @@ export default (controller) => {
   const router = express.Router();
 
   router.get("/me", controller.getLoggedInUser);
-  router.get("/", paginationParser, controller.get);
-  router.get("/deleted", paginationParser, controller.getDeleted);
-  router.post("/", validatePost, controller.create);
+  // router.get("/", paginationParser, controller.get);
+  // router.get("/deleted", paginationParser, controller.getDeleted);
+  // router.post("/", validatePost, controller.create);
   router.put("/:id", validatePut, controller.update);
-  router.delete("/:id", controller.deleteById);
+  // router.delete("/:id", controller.deleteById);
   return router;
 };

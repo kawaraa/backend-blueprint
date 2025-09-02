@@ -89,15 +89,15 @@ class PostgresqlDB {
     return { sql, values };
   }
 
-  prepareQuery(baseQuery, data, pagination, deleted, prefix = "") {
-    const error = validateData(data);
+  prepareSelectQuery(baseQuery, params, pagination, deleted, prefix = "") {
+    const error = validateData(params);
     if (error) throw error;
 
     const values = [];
-    const placeholders = Object.keys(data)
+    const placeholders = Object.keys(params)
       .map((k, i) => {
-        let v = data[k].value || data[k];
-        let op = data[k].operator;
+        let v = params[k].value || params[k];
+        let op = params[k].operator;
         if (k.includes("id") || columns[k] == "enum") {
           values.push(v.split(","));
           return `${prefix}${k} = ANY($${i + 1})`;
