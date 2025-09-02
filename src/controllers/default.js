@@ -10,6 +10,8 @@ export default class DefaultController {
     this.entity = entity;
     this.insertQuery = `INSERT INTO ${entity} `;
     this.selectQuery = (f = "*") => `SELECT ${f}, COUNT(*) AS total FROM ${this.entity} WHERE`;
+    this.selectParentQuery = (f = "*", parent) =>
+      `SELECT ${f}, t2.branch_id AS branch_id COUNT(*) OVER() AS total FROM ${this.entity} t1 LEFT JOIN ${parent} t2 on t1.parent_id = t2.id WHERE`;
     this.updateQuery = `UPDATE ${this.entity} SET`;
     this.deleteQuery = `DELETE FROM ${this.entity} WHERE`;
   }
