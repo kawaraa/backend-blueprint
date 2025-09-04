@@ -21,7 +21,8 @@ export default class DefaultController {
       if (!user?.id) query.public = true;
       else {
         const p = await this.checkPermission(user, "view", this.entity, [], query);
-        if (!p.permitted) throw "FORBIDDEN";
+        if (!p.permitted && this.entity != "branch") throw "FORBIDDEN";
+        p.params.created_by = user.id;
       }
 
       const baseQuery = this.selectQuery(this.db.convertFieldsToQuery(p.fields));
@@ -47,7 +48,7 @@ export default class DefaultController {
       });
 
       const p = await this.checkPermission(user, "add", this.entity, data);
-      if (!p.permitted) throw "FORBIDDEN";
+      if (!p.permitted && this.entity != "branch") throw "FORBIDDEN";
 
       data = await this.db.create(this.entity, file ? [p.data[0]] : p.data, "*");
 
@@ -68,7 +69,8 @@ export default class DefaultController {
     try {
       body = this.db.validator.removeImmutableFields(this.entity, body);
       const p = await this.checkPermission(user, "edit", this.entity, [body], params);
-      if (!p.permitted) throw "FORBIDDEN";
+      if (!p.permitted && this.entity != "branch") throw "FORBIDDEN";
+      p.params.created_by = user.id;
 
       const data = await this.db.update(this.entity, p.data[0], p.params, "id");
       res.json(data);
@@ -103,8 +105,10 @@ export default class DefaultController {
       const p = await this.checkPermission(user, "view", this.entity, [], query);
       if (!p.superuser) throw "FORBIDDEN";
 
-      const q = this.db.prepareSelectQuery(this.selectQuery(p.fields), p.params, pagination, true);
-      const data = await this.db.getAll(q.sql, q.values);
+      const baseQuery = this.selectQuery(this.db.convertFieldsToQuery(p.fields));
+
+      const { sql, values } = this.db.prepareSelectQuery(baseQuery, p.params, pagination, true);
+      const data = await this.db.getAll(sql, values);
       const total = +data[0]?.total || 0;
       data.forEach((d) => delete d.total);
 

@@ -10,9 +10,9 @@ import db from "../providers/sqlite.js";
   data: Array of objects to filter if needed
 */
 export default async function checkPermission(user, action, entity, data = [], params = {}) {
-  const result = { permitted: false, data: [], params, fields: [], superuser: false };
+  const result = { permitted: false, data, params, fields: [], superuser: false };
   const id = params.id;
-  const parentId = action == "add" ? data[0]?.parent_id : null;
+  const parentId = result.data[0]?.parent_id;
 
   if (!user?.role_id) return result;
 
@@ -23,7 +23,7 @@ export default async function checkPermission(user, action, entity, data = [], p
   const codes = new Set(permissions.map(({ code }) => code));
   result.superuser = codes.has("*:*:*:*");
 
-  data = data.forEach((item) => {
+  result.data.forEach((item) => {
     if (action == "add") {
       if (item.parent_id) item.parent_id = parentId;
       if (rule == "user" && parent == "users") item.parent_id = user.id;
@@ -33,13 +33,11 @@ export default async function checkPermission(user, action, entity, data = [], p
   });
 
   if (result.superuser || rule == "allUsers") {
-    result.data = data;
     result.permitted = true;
     return result;
   }
 
   if (rule == "user") {
-    result.data = data;
     result.permitted = true;
 
     if (action != "add") {
@@ -52,18 +50,27 @@ export default async function checkPermission(user, action, entity, data = [], p
 
   if (rule == "branch") {
     if (codes.has(`${action}:${entity}:*:*`)) {
-      result.data = data;
       result.permitted = true;
 
+      if (entity == "branch") {
+        if (action != "add") result.params.created_by = user.id;
+        return result;
+      }
       if (fields["branch_id"]) action != "add" && (result.params.branch_id = user.branch_id);
       else result.permitted = await checkBranch(user.branch_id, parentId, entity, id);
       return result;
       //
     } else if (codes.has(`${action}:${entity}:self:*`)) {
-      result.data = data;
       result.permitted = true;
 
       if (action != "add") result.params.created_by = user.id;
+      if (!user.type || user.type == "NORMAL") {
+        if (entity == "users" && action == "add") result.permitted = false;
+        return result;
+      }
+
+      if (entity == "branch") return result;
+
       if (fields["branch_id"]) action != "add" && (result.params.branch_id = user.branch_id);
       else result.permitted = await checkBranch(user.branch_id, parentId, entity, id);
       return result;
@@ -73,6 +80,11 @@ export default async function checkPermission(user, action, entity, data = [], p
 
       result.fields = Object.keys(fields).filter((f) => codes.has(`${action}:${entity}:*:${f}`));
 
+      if (entity == "branch") {
+        result.params.created_by = user.id;
+        result.permitted = true;
+        return result;
+      }
       if (fields["branch_id"]) {
         result.params.branch_id = user.branch_id;
         result.permitted = true;

@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS permission ( -- {permission:superuser}
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
-CREATE TABLE IF NOT EXISTS branch ( -- {branch:superuser}
+CREATE TABLE IF NOT EXISTS branch ( -- {branch:branch}
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
   name VARCHAR(150) NOT NULL,
   description TEXT,

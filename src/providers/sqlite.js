@@ -140,7 +140,7 @@ class SqliteDB {
         let v = params[k].value || params[k];
         let op = params[k].operator;
 
-        if (k.includes("id") || columns[k] == "enum") {
+        if (k.includes("id") || k.includes("created_by") || columns[k] == "enum") {
           values.push(v.split(","));
           return `${prefix}${k} = IN (?)`;
         }

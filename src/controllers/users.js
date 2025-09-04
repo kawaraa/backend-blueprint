@@ -66,8 +66,8 @@ export default class UserController extends Controller {
 
       if (data.type != "ADMIN") {
         const user = (await this.db.getByField(this.entity, "id", body.id, "type"))[0];
-        if (user?.type == "APPLICANT") {
-          return next("403-user type 'APPLICANT' can not have admin role");
+        if (user?.type == "NORMAL") {
+          return next("403-user type 'NORMAL' can not have admin role");
         }
       }
 

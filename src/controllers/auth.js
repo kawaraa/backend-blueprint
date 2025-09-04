@@ -16,7 +16,8 @@ export default class AuthController extends Controller {
 
   register = async ({ body: { name, username, password } }, res, next) => {
     try {
-      const data = { name, username, type: "APPLICANT", password_hash: await bcrypt.hash(password, 10) };
+      // Todo: Give the user permissions to create and update only the things that he needs e.g. update hist user data and create,update contacts
+      const data = { name, username, type: "NORMAL", password_hash: await bcrypt.hash(password, 10) };
       const user = (await this.db.create("users", [data], "id"))[0];
       await this.db.updateById("users", { created_by: user.id }, user.id);
       res.json({ data: [user] });
