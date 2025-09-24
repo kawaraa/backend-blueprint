@@ -14,6 +14,8 @@ export default class DefaultController {
       `SELECT ${f}, t2.branch_id AS branch_id COUNT(*) OVER() AS total FROM ${this.entity} t1 LEFT JOIN ${parent} t2 on t1.parent_id = t2.id WHERE`;
     this.updateQuery = `UPDATE ${this.entity} SET`;
     this.deleteQuery = `DELETE FROM ${this.entity} WHERE`;
+    // this.queryCount = `SELECT t1.field1, t1.field2, t1.field3, (SELECT COUNT(*) FROM other_table t2 WHERE t2.related_field = t1.id) AS row_count FROM main_table t1;`;
+    // this.joinCount = `SELECT t1.field1, t1.field2, t1.field3, COUNT(t2.related_field) AS row_count FROM main_table t1 LEFT JOIN other_table t2 ON t1.id = t2.related_field GROUP BY t1.field1, t1.field2, t1.field3;`;
   }
 
   get = async ({ user, query, pagination }, res, next) => {

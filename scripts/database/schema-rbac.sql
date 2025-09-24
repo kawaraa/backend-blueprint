@@ -10,8 +10,9 @@
 -- CREATE DATABASE IF NOT EXISTS main; -- (Not needed in SQLITE)
 -- USE main; -- use main Database. (Not needed in SQLITE)
 
+
 -- Role-Based Access Control (RBAC) System
-CREATE TABLE IF NOT EXISTS users ( -- {users:superuser}
+CREATE TABLE IF NOT EXISTS users ( -- {users:user}
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
   name VARCHAR(100) NOT NULL,
   username VARCHAR(50) UNIQUE NOT NULL,
@@ -21,17 +22,17 @@ CREATE TABLE IF NOT EXISTS users ( -- {users:superuser}
   role_id INTEGER,
   role_assignor INTEGER,
   role_assigned_at TIMESTAMP,
-  branch_id INTEGER,
   status VARCHAR(50) NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'ACTIVE', 'INACTIVE', 'SUSPENDED')),
   last_login TIMESTAMP,
   failed_attempts SMALLINT DEFAULT 0,
   locked_until TIMESTAMP,
   mfa_secret TEXT,
+  group_ids TEXT NOT NULL,
+  history JSONB, -- immutable -- history, e.g. {...ChangedData,performed_by,performed_date}
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   created_by INTEGER NOT NULL, -- immutable
   deleted_at TIMESTAMP,
   FOREIGN KEY (role_id) REFERENCES role(id),
-  FOREIGN KEY (branch_id) REFERENCES branch(id),
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
@@ -48,7 +49,7 @@ CREATE TABLE IF NOT EXISTS role ( -- {role:superuser}
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
--- Group/Role-Permission Mapping table. the code is taken from config/permissions.json file
+-- Group/Role-Permission Mapping table. the code are generated in permissions controller
 CREATE TABLE IF NOT EXISTS permission ( -- {permission:superuser}
   role_id INTEGER NOT NULL, -- immutable
   code VARCHAR(100) NOT NULL, -- immutable -- 'view:entity:record:field' E.g. '*:*:*:*'
@@ -60,8 +61,9 @@ CREATE TABLE IF NOT EXISTS permission ( -- {permission:superuser}
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
-CREATE TABLE IF NOT EXISTS branch ( -- {branch:superuser}
-  id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
+CREATE TABLE IF NOT EXISTS group ( -- {group:user}
+  id VARCHAR(250) PRIMARY KEY, -- immutable
+  parent_ids VARCHAR(250),
   name VARCHAR(150) NOT NULL,
   description TEXT,
   created_by INTEGER NOT NULL, -- immutable
@@ -71,11 +73,10 @@ CREATE TABLE IF NOT EXISTS branch ( -- {branch:superuser}
 
 ----- Not supported in SQLITE:
 -- ALTER TABLE users ADD CONSTRAINT fk_users_role_id FOREIGN KEY (role_id) REFERENCES role(id);
--- ALTER TABLE users ADD CONSTRAINT fk_users_branch_id FOREIGN KEY (branch_id) REFERENCES branch(id);
 
-CREATE TABLE IF NOT EXISTS settings ( -- {settings:user}
+CREATE TABLE IF NOT EXISTS settings ( -- {settings:user:users}
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
-  parent_id INTEGER NOT NULL, -- immutable
+  parent_id INTEGER UNIQUE NOT NULL, -- immutable
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   created_by INTEGER NOT NULL, -- immutable
   FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -84,16 +85,18 @@ CREATE TABLE IF NOT EXISTS settings ( -- {settings:user}
 
 CREATE TABLE IF NOT EXISTS citizen ( -- {citizen:branch}
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
-  name VARCHAR(255) NOT NULL,
+  first_name VARCHAR(50) NOT NULL,
+  middle_name VARCHAR(50), -- Father name or middle name
+  last_name VARCHAR(50) NOT NULL,
   status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE' CHECK(status IN (
     'ACTIVE', 'ABROAD', 'DETAINED', 'WANTED'
   )),
   note TEXT,
-  branch_id INTEGER,  -- Which branch this item belongs to
+  group_ids TEXT NOT NULL,
+  history JSONB, -- immutable -- history, e.g. {...ChangedData,performed_by,performed_date}
   created_by INTEGER NOT NULL, -- immutable
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (branch_id) REFERENCES branch(id),
+  deleted_at TIMESTAMP,
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
@@ -106,8 +109,8 @@ CREATE TABLE contact ( -- {contact:branch:citizen}
   verified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   expiration_date TEXT NOT NULL DEFAULT (DATE('now', '+3 years'))
   created_by INTEGER NOT NULL, -- immutable
+  history JSONB, -- immutable -- history, e.g. {...ChangedData,performed_by,performed_date}
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP,
   FOREIGN KEY (parent_id) REFERENCES citizen(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id)
@@ -123,29 +126,14 @@ CREATE TABLE address ( -- {address:branch:citizen}
   street_line2 VARCHAR(200), -- Additional info e.g. neighborhood
   street_line1 VARCHAR(200) NOT NULL, -- E.g. street
   note VARCHAR(250), -- Some guides
+  history JSONB, -- immutable -- history, e.g. {...ChangedData,performed_by,performed_date}
   created_by INTEGER NOT NULL, -- immutable
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP,
   FOREIGN KEY (parent_id) REFERENCES citizen(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
-
--- System related entity
-CREATE TABLE IF NOT EXISTS log (
-  id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
-  actor_id TEXT NOT NULL,
-  actor_name VARCHAR(50),
-  ip_address VARCHAR(50),
-  device VARCHAR(250), -- actor_agent, actor_device or service_name
-  action VARCHAR(50) NOT NULL, -- 'CREATE', 'UPDATE', 'DELETE', 'ACCESS'
-  entity VARCHAR(50) NOT NULL, -- Table name
-  record VARCHAR(100) NOT NULL, -- Record id
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
-  old_data TEXT,  -- SQLite doesn't have JSONB; use TEXT or BLOB
-  FOREIGN KEY (actor_id) REFERENCES users(id)
-);
 
 -- System UI translation table
 CREATE TABLE IF NOT EXISTS translation ( -- {translation:allUsers}
@@ -166,24 +154,38 @@ CREATE TABLE input_field ( -- {input-field:allUsers}
   label VARCHAR(250) NOT NULL,
   name VARCHAR(50) NOT NULL,
   type VARCHAR(50) NOT NULL,
+  required BOOLEAN DEFAULT FALSE,
   public BOOLEAN DEFAULT FALSE,
-  branch_id INTEGER,
+  group_ids TEXT NOT NULL,
   created_by INTEGER NOT NULL, -- immutable
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
+  deleted_at TIMESTAMP,
   UNIQUE (form, name),
-  FOREIGN KEY (branch_id) REFERENCES branch(id),
   FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+-- System related entity
+CREATE TABLE IF NOT EXISTS log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
+  actor_id TEXT NOT NULL,
+  actor_name VARCHAR(50),
+  ip_address VARCHAR(50),
+  device VARCHAR(250), -- actor_agent, actor_device or service_name
+  action VARCHAR(50) NOT NULL, -- 'CREATE', 'UPDATE', 'DELETE', 'ACCESS'
+  entity VARCHAR(50) NOT NULL, -- Table name
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
+  FOREIGN KEY (actor_id) REFERENCES users(id)
 );
 
 
 
 -- Triggers in SQLITE:
 
--- Generating UUID for branch table.
--- CREATE TRIGGER IF NOT EXISTS branch_id_gen BEFORE INSERT ON branch
--- BEGIN
---   SET NEW.id = lower(hex(randomblob(16)));
--- END;
+Generating UUID for group table.
+CREATE TRIGGER IF NOT EXISTS group_id_gen BEFORE INSERT ON group
+BEGIN
+  SET NEW.id = lower(hex(randomblob(16)));
+END;
 
 -- Update the updated_at timestamp
 CREATE TRIGGER IF NOT EXISTS citizen_updated_at_trigger
@@ -195,5 +197,10 @@ BEGIN
   WHERE id = NEW.id;
 END;
 
+
 CREATE INDEX IF NOT EXISTS idx_translation_article ON translation(article);
 CREATE INDEX IF NOT EXISTS idx_input_field_form ON input_field(form);
+CREATE INDEX IF NOT EXISTS idx_users_group_ids ON users(group_ids);
+CREATE INDEX IF NOT EXISTS idx_citizen_group_ids ON citizen(group_ids);
+CREATE INDEX IF NOT EXISTS idx_input_field_group_ids ON input_field(group_ids);
+-- CREATE INDEX IF NOT EXISTS idx_xxx_group_ids ON xxx(group_ids);

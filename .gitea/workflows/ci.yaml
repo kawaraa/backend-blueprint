@@ -1,0 +1,28 @@
+name: backend CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  deploy:
+    runs-on: [intesab, backend]
+
+    steps:
+      - name: Checkout repo
+        run: |
+          cd ~/${{ vars.REPO_WORK_DIR }}
+          git pull
+
+      - name: Stop old container
+        run: docker-compose -f ~/${{ vars.REPO_WORK_DIR }}/docker-compose.yml down
+
+      - name: Build Docker image
+        run: docker-compose -f ~/${{ vars.REPO_WORK_DIR }}/docker-compose.yml up -d
+
+      - name: Cleanup old images
+        run: docker image prune -f
+# Todo
+# ${{ secrets.VARIABLE_NAME }}

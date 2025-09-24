@@ -13,12 +13,10 @@ function extractSchema(sqlScriptLines) {
 
   sqlScriptLines.forEach((line) => {
     if (!line.startsWith("--") && line.includes("CREATE TABLE")) {
-      entity = line.split("(")[0].trim().split(" ").at(-1);
-      const apiConfig = line.split("{")[1]?.split("}")[0]?.trim() || null; // if accessible via API
-      if (apiConfig) {
-        const [endpoint, rule] = apiConfig.split(":");
-        schema[entity] = { endpoint, public: false, rule, fields: {} };
-      }
+      const [part1, part2] = line.split("(");
+      entity = part1.trim().split(" ").at(-1);
+      const [endpoint, rule, parent] = part2?.split("{")[1]?.split("}")[0]?.split(":") || []; // if accessible via API
+      if (endpoint) schema[entity] = { endpoint, public: false, rule, parent, fields: {} };
       return;
     }
 
