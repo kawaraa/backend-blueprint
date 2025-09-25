@@ -72,25 +72,25 @@ class SqliteDB {
     return this.getOne(`SELECT ${fields} FROM ${entity} WHERE id = ?`, id);
   }
 
-  async get(entity, params, fields = "*") {
-    this.validator.validateData(entity, params);
+  async get(entity, conditions, fields = "*") {
+    this.validator.validateData(entity, conditions);
     const invalidColumns = this.validator.validateFields(fields == "*" ? [] : fields.split(","));
     if (invalidColumns.length > 0) throw `BAD_REQUEST-Invalid fields names (${invalidColumns.join(", ")})`;
-    const { placeholders, values } = this.convertObjectToQuery(params, " AND ");
+    const { placeholders, values } = this.prepareConditions(conditions, " AND ");
     return this.getAll(`SELECT ${fields} FROM ${entity} WHERE ${placeholders}`, values);
   }
 
-  async update(entity, data, params, fields) {
-    let { sql, values } = this.prepareUpdateQuery(entity, data, params);
+  async update(entity, data, conditions, fields) {
+    let { sql, values } = this.prepareUpdateQuery(entity, data, conditions);
     return this.run(sql + (!fields ? "" : ` RETURNING ${fields}`), values);
   }
 
-  async softDelete(entity, params) {
-    return this.update(entity, { deleted_at: new Date().toISOString() }, params);
+  async softDelete(entity, conditions) {
+    return this.update(entity, { deleted_at: new Date().toISOString() }, conditions);
   }
 
-  async delete(entity, params) {
-    const { placeholders, values } = this.convertObjectToQuery(params, " AND ");
+  async delete(entity, conditions) {
+    const { placeholders, values } = this.prepareConditions(conditions, " AND ");
     return this.run(`DELETE FROM ${entity} WHERE ${placeholders}`, values);
   }
 
@@ -103,61 +103,62 @@ class SqliteDB {
     const error = this.validator.validateData(entity, data);
     if (error) throw error;
 
-    const { placeholders, values, fields } = this.convertObjectToQuery(data, ",", "insert");
+    const { placeholders, values, fields } = this.prepareDataForInsert(data, ",");
 
     const sql = `INSERT INTO ${entity} (${fields.join(",")}) VALUES ${placeholders}`;
 
     return { sql, values };
   }
 
-  prepareUpdateQuery(entity, data, params) {
+  prepareUpdateQuery(entity, data, conditions) {
     const fields = Object.keys(data || {});
     if (!(fields.length > 0)) throw "BAD_REQUEST-'data' should not be empty";
     const error = this.validator.validateData(entity, data);
     if (error) throw error;
 
-    const { placeholders, values } = this.convertObjectToQuery(data, ",");
+    const { placeholders, values } = this.prepareDataForUpdate(data, ",");
     let sql = `UPDATE ${entity} SET ${placeholders}`;
-    if (params) {
-      const sqlCondition = this.prepareParams(condition, " AND ", null, values.length);
+    if (conditions) {
+      const sqlCondition = this.prepareConditions(condition, " AND ", null, values.length);
       values.push(...sqlCondition.values);
       sql += ` WHERE ${sqlCondition.placeholders}`;
     }
     return { sql, values };
   }
 
-  prepareSelectQuery(baseQuery, params, pagination, deleted) {
-    const entity = this.#getEntityFromQuery(baseQuery);
-    const fields = this.validator.schema[entity].fields;
+  prepareDataForInsert(data, separator = ",") {
+    const values = [];
+    const fields = Array.from(new Set(data.flatMap((item) => Object.keys(item))));
+    const placeholders = data
+      .map((item) => {
+        values.push(fields.map((f) => item[f] || null));
+        return `(${fields.map(() => `?`).join(",")})`;
+      })
+      .join(separator);
 
-    const { placeholders, values } = this.convertParamsToQuery(entity, params);
-
-    if (!fields.deleted_at) baseQuery += ` ${placeholders}`;
-    else {
-      baseQuery += ` ${entity}.deleted_at IS ${deleted ? "NOT" : ""} NULL ${placeholders}`;
-      if (placeholders) baseQuery += " AND " + placeholders;
-    }
-
-    if (pagination) {
-      if (pagination.orderby) baseQuery += ` ORDER BY ${entity}.${pagination.orderby}`;
-      values.push(pagination.limit, pagination.offset);
-      baseQuery += ` LIMIT $${values.length - 1} OFFSET $${values.length}`;
-    }
-
-    return { sql: baseQuery, values };
+    // Example: placeholders: `(?,?),(?,?)`, values: [[v,v],[v,v]]
+    return { placeholders, values };
   }
 
-  prepareParams(entity, params) {
-    const error = this.validator.validateData(entity, params);
+  prepareDataForUpdate(object, separator = ",") {
+    const values = [];
+    const fields = Object.keys(object);
+    const placeholders = fields.map((key) => values.push(object[key]) && `${key} = ?`).join(separator);
+    // Example: placeholders: `field1 = ?, field2 = ?`, values: [v, v]
+    return { placeholders, values, fields };
+  }
+
+  prepareConditions(entity, conditions) {
+    const error = this.validator.validateData(entity, conditions);
     if (error) throw error;
 
     const fields = this.validator.schema[entity]?.fields;
     const values = [];
 
-    let placeholders = Object.keys(params)
+    let placeholders = Object.keys(conditions)
       .map((k) => {
-        const value = (params[k].value || params[k]).split(",");
-        const operator = params[k].operator;
+        const value = (conditions[k].value || conditions[k]).split(",");
+        const operator = conditions[k].operator;
         const type = fields[k]?.type;
 
         if (k.includes("id") || k.includes("created_by") || type == "enum") {
@@ -177,183 +178,129 @@ class SqliteDB {
       })
       .join(" AND ");
 
-    // Example: placeholders: ``, values: []
+    // Example: placeholders: `field1 = ? AND field2 = ?`, values: [v, v]
     return { placeholders, values };
   }
 
-  prepareData(data, separator = ",") {
+  prepareConditionsForJoinQuery(entitiesConditions) {
+    const placeholders = [];
     const values = [];
-    const fields = Array.from(new Set(data.flatMap((item) => Object.keys(item))));
-    const placeholders = data
-      .map((item) => {
-        values.push(...fields.map((f) => item[f] || null));
-        return `(${fields.map(() => `?`).join(",")})`;
-      })
-      .join(separator);
-
-    // Example: placeholders: ``, values: []
-    return { placeholders, values };
-  }
-
-  prepareParamsForJoinSelect(entityWithParams) {
-    let placeholders = [];
-    const values = [];
-    let index = 0;
-
-    Object.keys(entityWithParams).forEach((entity) => {
-      const q = this.convertParamsToQuery(entity, entityWithParams[entity], index);
+    Object.keys(entitiesConditions).forEach((entity) => {
+      const q = this.prepareConditions(entity, entitiesConditions[entity]);
       if (q.values.length) {
         values.push(...q.values);
-        index += values.length;
         placeholders.push(`${q.placeholders}`);
       }
     });
 
-    placeholders = placeholders.join(" AND ");
-    return { placeholders, values };
+    return { placeholders: placeholders.join(" AND "), values };
   }
 
-  generateJoinQuery(tables, params, pagination, joinType = "LEFT", linKey = "parent_id", deleted = false) {
-    if (tables.length < 2) throw "BAD_REQUEST-Need at least two entities for a join";
-    // const paramsFields = Object.keys(params);
-    // const invalidFields = [];
-    const selectParts = [];
-    const joinClauses = [];
-    const newParams = {};
-    let sql = "";
-    let orderbyEntity = tables[0];
+  generateSingleQuery(entity, conditions, pagination, fieldNames, deleted) {
+    const schema = this.validator.schema[entity].fields;
+    const selectedFields = fieldNames?.join(",") || "*";
 
-    // Iterate over all other tables (children)
-    for (let i = 0; i < tables.length; i++) {
-      const table = tables[i];
-      const entity = this.validator.schema[table]?.fields;
-      const isParent = i < 1;
+    let sql = `SELECT ${selectedFields}, COUNT(*) AS total FROM ${entity} WHERE`;
+    const { placeholders, values } = this.prepareConditions(entity, conditions);
 
-      if (!entity) throw "BAD_REQUEST-Invalid entity name";
-      if (!newParams[table]) newParams[table] = {};
-
-      selectParts.push(
-        Object.keys(entity)
-          .map((f) => {
-            if (f == pagination.orderby) orderbyEntity = table;
-            if (params[f] && (!isParent || f != "type")) newParams[table][f] = params[f];
-            const newName = isParent ? "" : ` AS ${table}_${f}`;
-            return `${table}.${f}${newName}`;
-          })
-          .join(",")
-      );
-
-      if (i > 0) {
-        joinClauses.push(
-          `${tables[0]} ${joinType} JOIN ${tables[i]} ON ${tables[0]}.id = ${tables[i]}.${linKey}`
-        );
-      }
+    if (!schema.deleted_at) sql += ` ${placeholders}`;
+    else {
+      sql += ` ${entity}.deleted_at IS ${deleted ? "NOT" : ""} NULL`;
+      if (placeholders) sql += " AND " + placeholders;
     }
-    sql = `SELECT ${selectParts.join(",")}, COUNT(*) AS total FROM ${joinClauses.join(" ")}`;
-    sql += ` WHERE ${tables[0]}.deleted_at IS ${deleted ? "NOT" : ""} NULL`;
-
-    if (joinType == "LEFT") Object.keys(newParams).forEach((t, i) => i > 0 && delete newParams[t]);
-    else delete newParams[tables[0]];
-
-    const { placeholders, values } = this.prepareParamsForJoinSelect(newParams);
-    if (values.length) sql += " AND " + placeholders;
 
     if (pagination) {
-      if (pagination.orderby) sql += ` ORDER BY ${orderbyEntity}.${pagination.orderby}`;
+      if (pagination.orderby) sql += ` ORDER BY ${entity}.${pagination.orderby}`;
       values.push(pagination.limit, pagination.offset);
       sql += ` LIMIT $${values.length - 1} OFFSET $${values.length}`;
     }
 
     return { sql, values };
-
-    // Usage: const join = this.db.generateJoinQuery(["citizen", "application"], params, null, "LEFT", "parent_id");
   }
 
-  convertFieldsToQuery(fields, prefix = "") {
-    if (fields.length < 1) return prefix + "*";
-    return prefix + fields.join(`,${prefix}`).trim();
-  }
+  generateQuery(entities, conditions, pagination, fieldNames, leftJoin, deleted) {
+    if (typeof entities == "string") {
+      const parent = this.validator.schema[entities].parent;
+      const parentParent = this.validator.schema[parent]?.parent;
+      if (!parent) return this.generateSingleQuery(entities, conditions, pagination, fieldNames, deleted);
 
-  generateQuery(entity, params, pagination, joinType = "LEFT", deleted = false) {
-    const { parent, fields } = this.validator.schema[entity];
-
-    // baseQuery, params, pagination, deleted
-    if (!this.validator.schema[parent]) {
-      let sql = "";
-      const { placeholders, values } = this.convertParamsToQuery(entity, params);
-
-      if (!fields.deleted_at) sql += ` ${placeholders}`;
-      else {
-        sql += ` ${entity}.deleted_at IS ${deleted ? "NOT" : ""} NULL ${placeholders}`;
-        if (placeholders) sql += " AND " + placeholders;
-      }
-
-      if (pagination) {
-        if (pagination.orderby) sql += ` ORDER BY ${entity}.${pagination.orderby}`;
-        values.push(pagination.limit, pagination.offset);
-        sql += ` LIMIT $${values.length - 1} OFFSET $${values.length}`;
-      }
-
-      return { sql, values };
-    } else {
-      const tables = [parent, entity];
-      const selectParts = [];
-      const joinClauses = [];
-      const newParams = {};
-      let sql = "";
-      let orderbyEntity = tables[0];
-
-      // Iterate over all other tables (children)
-      for (let i = 0; i < tables.length; i++) {
-        const table = tables[i];
-        const entity = this.validator.schema[table]?.fields;
-        const isParent = i < 1;
-        if (!newParams[table]) newParams[table] = {};
-
-        selectParts.push(
-          Object.keys(entity)
-            .map((f) => {
-              if (f == pagination.orderby) orderbyEntity = table;
-              // if (params[f] && (!isParent || f != "type")) newParams[table][f] = params[f];
-              const newName = isParent ? "" : ` AS ${table}_${f}`;
-              return `${table}.${f}${newName}`;
-            })
-            .join(",")
-        );
-
-        if (i > 0) {
-          let linKey = `${tables[0]}_id`;
-          joinClauses.push(
-            `${tables[0]} ${joinType} JOIN ${tables[i]} ON ${tables[0]}.id = ${tables[i]}.${linKey}`
-          );
-        }
-      }
-      sql = `SELECT ${selectParts.join(",")}, COUNT(*) OVER() AS total FROM ${joinClauses.join(" ")}`;
-      sql += ` WHERE ${tables[0]}.deleted_at IS ${deleted ? "NOT" : ""} NULL`;
-
-      if (joinType == "LEFT") Object.keys(newParams).forEach((t, i) => i > 0 && delete newParams[t]);
-      else delete newParams[tables[0]];
-
-      const { placeholders, values } = this.prepareParamsForJoinSelect(newParams);
-      if (values.length) sql += " AND " + placeholders;
-
-      if (pagination) {
-        if (pagination.orderby) sql += ` ORDER BY ${orderbyEntity}.${pagination.orderby}`;
-        values.push(pagination.limit, pagination.offset);
-        sql += ` LIMIT $${values.length - 1} OFFSET $${values.length}`;
-      }
-
-      return { sql, values };
+      entities = [parentParent, parent, entities];
     }
-    // Usage: const join = this.db.generateJoinQuery(["identity", "hiring_process"], params);
+
+    return this.generateJoinQuery(entities, conditions, pagination, fieldNames, leftJoin, deleted);
   }
 
-  #getEntityFromQuery(query) {
-    return query
-      .slice(query.indexOf("FROM") + 5)
-      .split(" ")[0]
-      .trim();
+  generateJoinQuery(entities, conditions, pagination, fieldNames, leftJoin, deleted) {
+    const [parentParent, parent, child] = entities;
+    const join = leftJoin ? "LEFT" : "RIGHT";
+    const selectParts = [];
+
+    const newConditions = {};
+    const linKey = `${parent}_id`;
+    let sql = "";
+
+    // Iterate over all other tables (children)
+    for (const entity of entities) {
+      let entityFields = Object.keys(this.validator.schema[entity]?.fields);
+      newConditions[entity] = {};
+
+      Object.keys(conditions).forEach(
+        (f) => entityFields.includes(f) && (newConditions[entity][f] = conditions[f])
+      );
+
+      if (fieldNames) entityFields = entityFields.filter((f) => fieldNames.includes(f));
+
+      const sameName =
+        entity != parentParent && ((leftJoin && entity == parent) || (!leftJoin && entity == child));
+
+      selectParts.push(
+        entityFields.map((f) => `${entity}.${f}${sameName ? "" : ` AS ${entity}_${f}`}`).join(",")
+      );
+    }
+
+    let joinClauses = `${parent} ${join} JOIN ${entity} ON ${parent}.id = ${entity}.${linKey}`;
+
+    if (parentParent) {
+      joinClauses += ` LEFT JOIN ${parentParent} ON ${parentParent}.id = ${parent}.${parentParent}_id`;
+    }
+
+    sql = `SELECT ${selectParts.join(",")}, COUNT(*) OVER() AS total FROM ${joinClauses}`;
+    sql += ` WHERE ${entities[1]}.deleted_at IS ${deleted ? "NOT" : ""} NULL`;
+
+    const parentFields = Object.keys(newConditions[parent]);
+    const childFields = Object.keys(newConditions[child]);
+    if (leftJoin) {
+      if (!!childFields.length) parentFields.forEach((f) => delete newConditions[child][f]);
+    } else {
+      if (!!parentFields.length) childFields.forEach((f) => delete newConditions[parent][f]);
+    }
+
+    const { placeholders, values } = this.prepareConditionsForJoinQuery(newConditions);
+    if (values.length) sql += " AND " + placeholders;
+
+    if (pagination) {
+      if (pagination.orderby) sql += ` ORDER BY ${leftJoin ? parent : child}.${pagination.orderby}`;
+      values.push(pagination.limit, pagination.offset);
+      sql += ` LIMIT ? OFFSET ?`;
+    }
+
+    return { sql, values };
+
+    // Usage: const join = this.db.generateJoinQuery(["identity", "hiring_process"], params);
+    // Return: { sql: `SELECT t JOIN t2 ON t.id = t2.t_id WHERE t.id = ? ...`, values:[v, ...] }
   }
+
+  // convertFieldsToQuery(fields, prefix = "") {
+  //   if (fields.length < 1) return prefix + "*";
+  //   return prefix + fields.join(`,${prefix}`).trim();
+  // }
+
+  // #getEntityFromQuery(query) {
+  //   return query
+  //     .slice(query.indexOf("FROM") + 5)
+  //     .split(" ")[0]
+  //     .trim();
+  // }
 }
 
 const sqliteDB = new SqliteDB(path.resolve(process.cwd(), process.env.DB_SQLITE_FILE));
@@ -366,3 +313,136 @@ export default sqliteDB;
 // db.run("UPDATE users SET name = ?, email = ? WHERE id = ?", [name, email, id]);
 // db.get("SELECT * FROM users WHERE id = ?", [id]);
 // db.run("DELETE FROM users WHERE id = ?", [id]);
+
+//
+//
+// generateQuery(entity, params, pagination, joinType = "LEFT", deleted = false) {
+//   const { parent, fields } = this.validator.schema[entity];
+
+//   // baseQuery, params, pagination, deleted
+//   if (!this.validator.schema[parent]) {
+//     let sql = "";
+//     const { placeholders, values } = this.convertParamsToQuery(entity, params);
+
+//     if (!fields.deleted_at) sql += ` ${placeholders}`;
+//     else {
+//       sql += ` ${entity}.deleted_at IS ${deleted ? "NOT" : ""} NULL ${placeholders}`;
+//       if (placeholders) sql += " AND " + placeholders;
+//     }
+
+//     if (pagination) {
+//       if (pagination.orderby) sql += ` ORDER BY ${entity}.${pagination.orderby}`;
+//       values.push(pagination.limit, pagination.offset);
+//       sql += ` LIMIT $${values.length - 1} OFFSET $${values.length}`;
+//     }
+
+//     return { sql, values };
+//   } else {
+//     const tables = [parent, entity];
+//     const selectParts = [];
+//     const joinClauses = [];
+//     const newParams = {};
+//     let sql = "";
+//     let orderbyEntity = tables[0];
+
+//     // Iterate over all other tables (children)
+//     for (let i = 0; i < tables.length; i++) {
+//       const table = tables[i];
+//       const entity = this.validator.schema[table]?.fields;
+//       const isParent = i < 1;
+//       if (!newParams[table]) newParams[table] = {};
+
+//       selectParts.push(
+//         Object.keys(entity)
+//           .map((f) => {
+//             if (f == pagination.orderby) orderbyEntity = table;
+//             // if (params[f] && (!isParent || f != "type")) newParams[table][f] = params[f];
+//             const newName = isParent ? "" : ` AS ${table}_${f}`;
+//             return `${table}.${f}${newName}`;
+//           })
+//           .join(",")
+//       );
+
+//       if (i > 0) {
+//         let linKey = `${tables[0]}_id`;
+//         joinClauses.push(
+//           `${tables[0]} ${joinType} JOIN ${tables[i]} ON ${tables[0]}.id = ${tables[i]}.${linKey}`
+//         );
+//       }
+//     }
+//     sql = `SELECT ${selectParts.join(",")}, COUNT(*) OVER() AS total FROM ${joinClauses.join(" ")}`;
+//     sql += ` WHERE ${tables[0]}.deleted_at IS ${deleted ? "NOT" : ""} NULL`;
+
+//     if (joinType == "LEFT") Object.keys(newParams).forEach((t, i) => i > 0 && delete newParams[t]);
+//     else delete newParams[tables[0]];
+
+//     const { placeholders, values } = this.prepareParamsForJoinSelect(newParams);
+//     if (values.length) sql += " AND " + placeholders;
+
+//     if (pagination) {
+//       if (pagination.orderby) sql += ` ORDER BY ${orderbyEntity}.${pagination.orderby}`;
+//       values.push(pagination.limit, pagination.offset);
+//       sql += ` LIMIT $${values.length - 1} OFFSET $${values.length}`;
+//     }
+
+//     return { sql, values };
+//   }
+//   // Usage: const join = this.db.generateJoinQuery(["identity", "hiring_process"], params);
+// }
+
+//
+// generateJoinQuery(tables, params, pagination, joinType = "LEFT", linKey = "parent_id", deleted = false) {
+//   if (tables.length < 2) throw "BAD_REQUEST-Need at least two entities for a join";
+//   // const paramsFields = Object.keys(params);
+//   // const invalidFields = [];
+//   const selectParts = [];
+//   const joinClauses = [];
+//   const newParams = {};
+//   let sql = "";
+//   let orderbyEntity = tables[0];
+
+//   // Iterate over all other tables (children)
+//   for (let i = 0; i < tables.length; i++) {
+//     const table = tables[i];
+//     const entity = this.validator.schema[table]?.fields;
+//     const isParent = i < 1;
+
+//     if (!entity) throw "BAD_REQUEST-Invalid entity name";
+//     if (!newParams[table]) newParams[table] = {};
+
+//     selectParts.push(
+//       Object.keys(entity)
+//         .map((f) => {
+//           if (f == pagination.orderby) orderbyEntity = table;
+//           if (params[f] && (!isParent || f != "type")) newParams[table][f] = params[f];
+//           const newName = isParent ? "" : ` AS ${table}_${f}`;
+//           return `${table}.${f}${newName}`;
+//         })
+//         .join(",")
+//     );
+
+//     if (i > 0) {
+//       joinClauses.push(
+//         `${tables[0]} ${joinType} JOIN ${tables[i]} ON ${tables[0]}.id = ${tables[i]}.${linKey}`
+//       );
+//     }
+//   }
+//   sql = `SELECT ${selectParts.join(",")}, COUNT(*) AS total FROM ${joinClauses.join(" ")}`;
+//   sql += ` WHERE ${tables[0]}.deleted_at IS ${deleted ? "NOT" : ""} NULL`;
+
+//   if (joinType == "LEFT") Object.keys(newParams).forEach((t, i) => i > 0 && delete newParams[t]);
+//   else delete newParams[tables[0]];
+
+//   const { placeholders, values } = this.prepareConditionsForJoinQuery(newParams);
+//   if (values.length) sql += " AND " + placeholders;
+
+//   if (pagination) {
+//     if (pagination.orderby) sql += ` ORDER BY ${orderbyEntity}.${pagination.orderby}`;
+//     values.push(pagination.limit, pagination.offset);
+//     sql += ` LIMIT $${values.length - 1} OFFSET $${values.length}`;
+//   }
+
+//   return { sql, values };
+
+//   // Usage: const join = this.db.generateJoinQuery(["citizen", "application"], params, null, "LEFT", "parent_id");
+// }
