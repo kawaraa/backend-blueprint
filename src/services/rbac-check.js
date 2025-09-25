@@ -39,12 +39,7 @@ export default async function checkPermission(user, action, entity, data = [], p
 
   if (rule == "user") {
     result.permitted = true;
-
-    if (action != "add") {
-      result.params.created_by = user.id;
-      if (parent) result.params.parent_id = user.id;
-      // if (fields["branch_id"]) result.params.branch_id = user.branch_id;
-    }
+    if (action != "add") result.params.created_by = user.id;
     return result;
   }
 

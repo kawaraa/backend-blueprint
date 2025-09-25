@@ -18,33 +18,17 @@ export default class DefaultController {
     // this.joinCount = `SELECT t1.field1, t1.field2, t1.field3, COUNT(t2.related_field) AS row_count FROM main_table t1 LEFT JOIN other_table t2 ON t1.id = t2.related_field GROUP BY t1.field1, t1.field2, t1.field3;`;
   }
 
-  get = async ({ user, query, pagination }, res, next) => {
-    try {
-      if (!user?.id) query.public = true;
-      else {
-        const p = await this.checkPermission(user, "view", this.entity, [], query);
-        if (!p.permitted && this.entity != "branch") throw "FORBIDDEN";
-        p.params.created_by = user.id;
-      }
-
-      const baseQuery = this.selectQuery(this.db.convertFieldsToQuery(p.fields));
-      const { sql, values } = this.db.prepareSelectQuery(baseQuery, p.params, pagination);
-      const data = await this.db.getAll(sql, values);
-      const total = +data[0]?.total || 0;
-      data.forEach((d) => delete d.total);
-
-      res.json({ data, total });
-    } catch (error) {
-      next(error);
-    }
-  };
-
   create = async ({ user, body, file }, res, next) => {
     try {
       const parentId = body.parent_id || body[0]?.parent_id;
       const created_by = user.id;
+      const group_ids = user.group_ids;
+      const groupBased = this.db.validator.schema[this.entity].fields.group_ids;
+      if (groupBased && !group_ids) throw "FORBIDDEN";
+
       let data = (Array.isArray(body) ? body : [body]).map((d) => {
         const item = this.db.validator.removeImmutableFields(this.entity, d);
+        if (groupBased) item.parent_id = parentId;
         if (parentId) item.parent_id = parentId;
         return item;
       });
@@ -62,6 +46,26 @@ export default class DefaultController {
         data[0].document = file.path;
       }
       res.json({ data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  get = async ({ user, query, pagination }, res, next) => {
+    try {
+      if (!user?.id && this.db.validator.schema[this.entity].fields.public) query.public = true;
+      else {
+        const p = await this.checkPermission(user, "view", this.entity, [], query);
+        if (!p.permitted) throw "FORBIDDEN";
+      }
+
+      const baseQuery = this.selectQuery(this.db.convertFieldsToQuery(p.fields));
+      const { sql, values } = this.db.prepareSelectQuery(baseQuery, p.params, pagination);
+      const data = await this.db.getAll(sql, values);
+      const total = +data[0]?.total || 0;
+      data.forEach((d) => delete d.total);
+
+      res.json({ data, total });
     } catch (error) {
       next(error);
     }

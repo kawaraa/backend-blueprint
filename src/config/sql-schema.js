@@ -20,7 +20,7 @@ function extractSchema(sqlScriptLines) {
       return;
     }
 
-    if (!entity || !schema[entity]?.endpoint) return;
+    if (!entity || !schema[entity]?.endpoint || line.includes("hidden")) return;
 
     const field = line.trim().split(" ")[0].trim() || null;
     let type = "";
@@ -28,8 +28,10 @@ function extractSchema(sqlScriptLines) {
 
     if (field && isField(field)) {
       if (field == "public") schema[entity].public = true;
-
       const length = Normalizer.extractNumbers(line);
+      // if (field=="id") type = "string-150";
+      // else if (line.includes("VARCHAR")) type = "string";
+      // else if (line.includes("TEXT")) type = "string";
       if (line.match(numberRegEx)) type = "number";
       else if (line.match(dateRegEx)) type = "date";
       else if (line.includes("BOOLEAN")) type = "boolean";
