@@ -20,6 +20,11 @@ export default class DefaultController {
 
   create = async ({ user, body, file }, res, next) => {
     try {
+      const p = await this.checkPermission(user, "add", this.entity, body);
+      if (!p.permitted) throw "FORBIDDEN";
+      if (this.db.validator.schema[this.entity].rule == "group" && !user.groups_ids) throw "FORBIDDEN";
+
+      // Here
       const parentId = body.parent_id || body[0]?.parent_id;
       const created_by = user.id;
       const group_ids = user.group_ids;
@@ -32,9 +37,6 @@ export default class DefaultController {
         if (parentId) item.parent_id = parentId;
         return item;
       });
-
-      const p = await this.checkPermission(user, "add", this.entity, data);
-      if (!p.permitted && this.entity != "branch") throw "FORBIDDEN";
 
       data = await this.db.create(this.entity, file ? [p.data[0]] : p.data, "*");
 

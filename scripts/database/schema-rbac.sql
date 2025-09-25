@@ -27,7 +27,6 @@ CREATE TABLE IF NOT EXISTS users ( -- {users:user}
   failed_attempts SMALLINT DEFAULT 0,
   locked_until TIMESTAMP,
   mfa_secret TEXT,
-  group_ids TEXT NOT NULL,
   history JSONB, -- immutable -- history, e.g. {...ChangedData,performed_by,performed_date}
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   created_by INTEGER NOT NULL, -- immutable
@@ -63,12 +62,19 @@ CREATE TABLE IF NOT EXISTS permission ( -- {permission:superuser}
 
 CREATE TABLE IF NOT EXISTS group ( -- {group:user}
   id VARCHAR(250) PRIMARY KEY, -- immutable
-  parent_ids VARCHAR(250),
+  parents_ids VARCHAR(250),
   name VARCHAR(150) NOT NULL,
   description TEXT,
   created_by INTEGER NOT NULL, -- immutable
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   FOREIGN KEY (created_by) REFERENCES users(id)
+);
+CREATE TABLE IF NOT EXISTS group_map ( -- {group:user}
+  group_id VARCHAR(250) NOT NULL, -- immutable
+  item_id VARCHAR(250) NOT NULL,
+  created_by INTEGER NOT NULL, -- immutable
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
+  FOREIGN KEY (group_id) REFERENCES group(id),
 );
 
 ----- Not supported in SQLITE:
@@ -76,10 +82,10 @@ CREATE TABLE IF NOT EXISTS group ( -- {group:user}
 
 CREATE TABLE IF NOT EXISTS settings ( -- {settings:user:users}
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
-  parent_id INTEGER UNIQUE NOT NULL, -- immutable
+  user_id INTEGER UNIQUE NOT NULL, -- immutable
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   created_by INTEGER NOT NULL, -- immutable
-  FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
@@ -92,7 +98,6 @@ CREATE TABLE IF NOT EXISTS citizen ( -- {citizen:branch}
     'ACTIVE', 'ABROAD', 'DETAINED', 'WANTED'
   )),
   note TEXT,
-  group_ids TEXT NOT NULL,
   history JSONB, -- immutable -- history, e.g. {...ChangedData,performed_by,performed_date}
   created_by INTEGER NOT NULL, -- immutable
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
@@ -102,7 +107,7 @@ CREATE TABLE IF NOT EXISTS citizen ( -- {citizen:branch}
 
 CREATE TABLE contact ( -- {contact:branch:citizen}
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
-  parent_id INTEGER NOT NULL, -- immutable 
+  user_id INTEGER NOT NULL, -- immutable 
   type VARCHAR(100) NOT NULL,
   value VARCHAR(150) NOT NULL,
   is_primary BOOLEAN DEFAULT FALSE,
@@ -112,13 +117,13 @@ CREATE TABLE contact ( -- {contact:branch:citizen}
   history JSONB, -- immutable -- history, e.g. {...ChangedData,performed_by,performed_date}
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   deleted_at TIMESTAMP,
-  FOREIGN KEY (parent_id) REFERENCES citizen(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES citizen(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
 CREATE TABLE address ( -- {address:branch:citizen}
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
-  parent_id INTEGER NOT NULL, -- immutable
+  user_id INTEGER NOT NULL, -- immutable
   country VARCHAR(50) NOT NULL,
   province VARCHAR(50) NOT NULL,
   city VARCHAR(50) NOT NULL,
@@ -130,7 +135,7 @@ CREATE TABLE address ( -- {address:branch:citizen}
   created_by INTEGER NOT NULL, -- immutable
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   deleted_at TIMESTAMP,
-  FOREIGN KEY (parent_id) REFERENCES citizen(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES citizen(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
@@ -156,7 +161,6 @@ CREATE TABLE input_field ( -- {input-field:allUsers}
   type VARCHAR(50) NOT NULL,
   required BOOLEAN DEFAULT FALSE,
   public BOOLEAN DEFAULT FALSE,
-  group_ids TEXT NOT NULL,
   created_by INTEGER NOT NULL, -- immutable
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   deleted_at TIMESTAMP,
@@ -200,7 +204,5 @@ END;
 
 CREATE INDEX IF NOT EXISTS idx_translation_article ON translation(article);
 CREATE INDEX IF NOT EXISTS idx_input_field_form ON input_field(form);
-CREATE INDEX IF NOT EXISTS idx_users_group_ids ON users(group_ids);
-CREATE INDEX IF NOT EXISTS idx_citizen_group_ids ON citizen(group_ids);
-CREATE INDEX IF NOT EXISTS idx_input_field_group_ids ON input_field(group_ids);
+CREATE INDEX IF NOT EXISTS idx_group_map ON group(item_id);
 -- CREATE INDEX IF NOT EXISTS idx_xxx_group_ids ON xxx(group_ids);

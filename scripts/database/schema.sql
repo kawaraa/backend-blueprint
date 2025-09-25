@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS permission ( -- {permission:superuser}
 
 CREATE TABLE contact ( -- {contact:user:user}
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
-  parent_id INTEGER NOT NULL, -- immutable 
+  user_id INTEGER NOT NULL, -- immutable 
   type VARCHAR(100) NOT NULL,
   value VARCHAR(150) NOT NULL,
   is_primary BOOLEAN DEFAULT FALSE,
@@ -74,13 +74,13 @@ CREATE TABLE contact ( -- {contact:user:user}
   created_by INTEGER NOT NULL, -- immutable
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   deleted_at TIMESTAMP,
-  FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
 CREATE TABLE address ( -- {address:user:user}
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
-  parent_id INTEGER NOT NULL, -- immutable
+  user_id INTEGER NOT NULL, -- immutable
   country VARCHAR(50) NOT NULL,
   province VARCHAR(50) NOT NULL,
   city VARCHAR(50) NOT NULL,
@@ -91,25 +91,25 @@ CREATE TABLE address ( -- {address:user:user}
   created_by INTEGER NOT NULL, -- immutable
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   deleted_at TIMESTAMP,
-  FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS store ( -- {product:user}
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
-  parent_id INTEGER,
+  user_id INTEGER,
   name VARCHAR(255) NOT NULL,
   description TEXT,
   public BOOLEAN DEFAULT FALSE,
   created_by INTEGER NOT NULL, -- immutable
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
-  FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS product ( -- {product:user:store}
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
-  parent_id INTEGER,
+  store_id INTEGER,
   name VARCHAR(255) NOT NULL,
   description TEXT,
   sku VARCHAR(100) UNIQUE,  -- Stock Keeping Unit
@@ -130,17 +130,17 @@ CREATE TABLE IF NOT EXISTS product ( -- {product:user:store}
   -- variants TEXT,
   created_by INTEGER NOT NULL, -- immutable
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
-  FOREIGN KEY (parent_id) REFERENCES store(id) ON DELETE CASCADE,
+  FOREIGN KEY (store_id) REFERENCES store(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS variant ( -- {variant:user:product}
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
-  parent_id INTEGER,
+  product_id INTEGER,
   options TEXT,
   created_by INTEGER NOT NULL, -- immutable
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
-  FOREIGN KEY (parent_id) REFERENCES product(id) ON DELETE CASCADE
+  FOREIGN KEY (product_id) REFERENCES product(id) ON DELETE CASCADE
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
