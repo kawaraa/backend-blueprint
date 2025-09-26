@@ -9,9 +9,9 @@ export default class TranslationController extends Controller {
 
   filter = async ({ user, body, pagination }, res, next) => {
     try {
-      const data = await this.db.getAll(this.newSelect, [body.text_a]);
       const result = await checkPermission(user, "view", this.entity, data);
-      // if (!result.permitted) return next("FORBIDDEN");
+      if (!result.permitted) throw "FORBIDDEN";
+      const data = await this.db.getAll(this.newSelect, [body.text_a]);
       res.json({ data: result.data, total: +result.data.length });
     } catch (error) {
       next(error);

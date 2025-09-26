@@ -11,7 +11,7 @@ export default class PermissionController extends Controller {
   getPermissionList = async ({ user }, res, next) => {
     try {
       const result = await checkPermission(user, "add", this.entity);
-      if (!result.permitted) return next("FORBIDDEN");
+      if (!result.permitted) throw "FORBIDDEN";
       res.json({ data: permissions });
     } catch (error) {
       next(error);
@@ -20,9 +20,9 @@ export default class PermissionController extends Controller {
 
   getMy = async ({ user }, res, next) => {
     try {
-      const fields = "role_id,code,description,created_at";
-      const permissions = await this.db.getAll("permission", "role_id", user.role_id, fields);
-      res.json({ data: permissions, total: permissions.length });
+      const q = "SELECT role_id,code,description,created_at FROM  permission WHERE role_id = ?";
+      const permissions = await this.db.getAll(q, [user?.role_id]);
+      res.json(permissions);
     } catch (error) {
       next(error);
     }
@@ -30,22 +30,19 @@ export default class PermissionController extends Controller {
 
   create = async ({ user, body }, res, next) => {
     try {
-      const result = await checkPermission(user, "add", this.entity);
-      if (!result.permitted) return next("FORBIDDEN");
-      let data = Array.isArray(body) ? body : [body];
-      data = data.map((item) => new Permission({ ...item, created_by: user.id }));
-      res.json({ data: await this.db.create(this.entity, data, "*") });
+      const result = await checkPermission(user, "add", this.entity, body);
+      if (!result.permitted) throw "FORBIDDEN";
+      res.json(await this.db.create(this.entity, p.data, "*"));
     } catch (error) {
       next(error);
     }
   };
 
-  deleteByCode = async ({ user, params }, res, next) => {
+  deleteByRoleIdAndCode = async ({ user, params }, res, next) => {
     try {
-      const result = await checkPermission(user, "delete", this.entity);
-      if (!result.permitted) return next("FORBIDDEN");
-      const { sql, values } = this.db.prepareQuery(this.deleteQuery, params);
-      await this.db.run(sql, values);
+      const result = await checkPermission(user, "delete", this.entity, [], params);
+      if (!result.permitted) throw "FORBIDDEN";
+      await this.db.delete(this.entity, p.params);
       res.json({ success: true });
     } catch (error) {
       next(error);

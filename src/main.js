@@ -22,6 +22,7 @@ mkdirSync("./uploads/", { recursive: true });
 
 app.set("trust proxy", true);
 
+// Prevent brute-force attacks (e.g. limit request rates).
 app.use(new RequestRateLimiter(1, 150).limitRate);
 
 // Security middleware

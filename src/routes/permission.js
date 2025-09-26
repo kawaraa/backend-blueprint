@@ -8,7 +8,7 @@ export default (controller) => {
   router.get("/", paginationParser, controller.get);
   router.get("/my", controller.getMy);
   router.post("/", controller.create);
-  router.delete("/:role_id/:code", controller.deleteByCode);
+  router.delete("/:role_id/:code", controller.deleteByRoleIdAndCode);
 
   return router;
 };

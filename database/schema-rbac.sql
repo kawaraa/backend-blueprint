@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS users ( -- {users:user}
   name VARCHAR(100) NOT NULL,
   username VARCHAR(50) UNIQUE NOT NULL,
   password_hash TEXT NOT NULL, -- Store bcrypt/scrypt hashes
-  type VARCHAR(50) NOT NULL,
+  type VARCHAR(50) NOT NULL, -- CONSUMER, ADMIN
   -- User-Role/Group Assignment
   role_id INTEGER,
   role_assignor INTEGER,

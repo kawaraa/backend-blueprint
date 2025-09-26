@@ -31,6 +31,10 @@ class SqliteDB {
     const invalidField = this.validator.allFields.find((f) => error.includes(f));
     throw `BAD_REQUEST-Invalid input${!invalidField ? "" : ` near '${invalidField}'`}`; // UNPROCESSABLE_ENTITY
   };
+  // insertQuery = (entity) => `INSERT INTO ${entity} `;
+  // insertQuery = (entity, fields) => `SELECT ${fields} FROM ${entity} WHERE`;
+  // updateQuery = (entity) => `UPDATE ${entity} SET`;
+  // deleteQuery = (entity) => `DELETE FROM ${entity} WHERE`;
 
   async #initializeDatabase() {
     try {
