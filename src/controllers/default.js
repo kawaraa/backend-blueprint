@@ -9,7 +9,6 @@ export default class DefaultController {
     this.checkPermission = checkPermission;
     this.entity = entity;
     this.insertQuery = `INSERT INTO ${entity} `;
-    this.selectQuery = (f = "*") => `SELECT ${f}, COUNT(*) AS total FROM ${this.entity} WHERE`;
     this.selectParentQuery = (f = "*", parent) =>
       `SELECT ${f}, t2.branch_id AS branch_id COUNT(*) OVER() AS total FROM ${this.entity} t1 LEFT JOIN ${parent} t2 on t1.parent_id = t2.id WHERE`;
     this.updateQuery = `UPDATE ${this.entity} SET`;
@@ -43,18 +42,19 @@ export default class DefaultController {
 
   get = async ({ user, query, pagination }, res, next) => {
     try {
+      let fields;
       if (!user?.id && this.db.validator.schema[this.entity].fields.public) query.public = true;
       else {
         const p = await this.checkPermission(user, "view", this.entity, [], query);
         if (!p.permitted) throw "FORBIDDEN";
         query = p.params;
+        fields = p.fields;
       }
 
-      // const baseQuery = this.selectQuery(this.db.convertFieldsToQuery(p.fields));
-      // const { sql, values } = this.db.prepareSelectQuery(baseQuery, p.params, pagination);
-      // const data = await this.db.getAll(sql, values);
-      // const total = +data[0]?.total || 0;
-      // data.forEach((d) => delete d.total);
+      const { sql, values } = this.db.generateQuery(this.entity, query, pagination, fields);
+      const data = await this.db.getAll(sql, values);
+      const total = +data[0]?.total || 0;
+      data.forEach((d) => delete d.total);
 
       res.json({ data, total });
     } catch (error) {
@@ -101,12 +101,10 @@ export default class DefaultController {
       const p = await this.checkPermission(user, "view", this.entity, [], query);
       if (!p.superuser) throw "FORBIDDEN";
 
-      // const baseQuery = this.selectQuery(this.db.convertFieldsToQuery(p.fields));
-
-      // const { sql, values } = this.db.prepareSelectQuery(baseQuery, p.params, pagination, true);
-      // const data = await this.db.getAll(sql, values);
-      // const total = +data[0]?.total || 0;
-      // data.forEach((d) => delete d.total);
+      const { sql, values } = this.db.generateQuery(this.entity, p.params, pagination, p.fields);
+      const data = await this.db.getAll(sql, values);
+      const total = +data[0]?.total || 0;
+      data.forEach((d) => delete d.total);
 
       res.json({ data, total });
     } catch (error) {

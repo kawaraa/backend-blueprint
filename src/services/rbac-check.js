@@ -10,7 +10,7 @@ import db from "../providers/sqlite.js";
   data: Array of objects to filter if needed
 */
 export default async function checkPermission(user, action, entity, data = [], params = {}) {
-  const result = { permitted: false, data, params, fields: [], superuser: false };
+  const result = { superuser: false, permitted: false, data, params, fields: [] };
 
   if (!user?.role_id) return result;
   if (!Array.isArray(result.data)) result.data = [result.data];
@@ -20,11 +20,7 @@ export default async function checkPermission(user, action, entity, data = [], p
 
   const { parent, rule, fields } = db.validator.schema[entity];
   const codes = new Set(permissions.map(({ code }) => code));
-  const hasPermission =
-    codes.has(`${action}:${entity}:*:*`) ||
-    codes.has(`${action}:${entity}:self:*`) ||
-    codes.has(`${action}:${entity}:*:`);
-
+  const hasPermission = codes.has(`${action}:${entity}:*:`) || codes.has(`${action}:${entity}:self:*`);
   result.superuser = codes.has("*:*:*:*");
 
   let notPermitted = false;
@@ -33,6 +29,8 @@ export default async function checkPermission(user, action, entity, data = [], p
       if (rule == "user" && parent == "users") item.user_id = user.id;
       if (rule == "group" && !item.group_ids.every((id) => user.group_ids.includes(id))) notPermitted = true;
       item.created_by = user.id;
+    } else if (action == "edit") {
+      Object.keys(item).filter((f) => codes.has(`edit:${entity}:*:${f}`) || delete item[f]);
     }
   });
 
@@ -41,6 +39,13 @@ export default async function checkPermission(user, action, entity, data = [], p
   if (result.superuser) {
     result.permitted = true;
     return result;
+  }
+
+  if (action == "view" && hasPermission && !codes.has(`${action}:${entity}:*:*`)) {
+    result.fields =
+      (params.fields?.trim() && params.fields.trim().split(",")) ||
+      Object.keys(fields).filter((f) => codes.has(`${action}:${entity}:*:${f}`));
+    delete result.params.fields;
   }
 
   if (rule == "allUsers") {
