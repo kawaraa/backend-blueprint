@@ -22,32 +22,20 @@ export default class DefaultController {
     try {
       const p = await this.checkPermission(user, "add", this.entity, body);
       if (!p.permitted) throw "FORBIDDEN";
-      if (this.db.validator.schema[this.entity].rule == "group" && !user.groups_ids) throw "FORBIDDEN";
 
-      // Here
-      const parentId = body.parent_id || body[0]?.parent_id;
-      const created_by = user.id;
-      const group_ids = user.group_ids;
-      const groupBased = this.db.validator.schema[this.entity].fields.group_ids;
-      if (groupBased && !group_ids) throw "FORBIDDEN";
-
-      let data = (Array.isArray(body) ? body : [body]).map((d) => {
-        const item = this.db.validator.removeImmutableFields(this.entity, d);
-        if (groupBased) item.parent_id = parentId;
-        if (parentId) item.parent_id = parentId;
-        return item;
-      });
-
+      p.data = p.data.map((d) => this.db.validator.removeImmutableFields(this.entity, d));
       data = await this.db.create(this.entity, file ? [p.data[0]] : p.data, "*");
 
       if (file) {
+        let parent = this.db.validator.schema[this.entity].parent;
+        parent = this.db.validator.schema[parent].parent || parent; // if these a parent of it's parent
+        const created_by = user.id;
         const document = { reference_id: data[0]?.id, type: this.entity, file_path: file.path, created_by };
-        if (parentId) document.parent_id = parentId;
-        const documentId = (await this.db.create("document", [document], "id"))[0]?.id;
-        data[0].documentId = documentId;
-        data[0].document = file.path;
+        if (parent) document.parent_id = data[0][`${parent}_id`];
+        const documents = await this.db.create("document", [document], "id,file_path");
+        data[0].documents = documents;
       }
-      res.json({ data });
+      res.json(data);
     } catch (error) {
       next(error);
     }
@@ -59,13 +47,14 @@ export default class DefaultController {
       else {
         const p = await this.checkPermission(user, "view", this.entity, [], query);
         if (!p.permitted) throw "FORBIDDEN";
+        query = p.params;
       }
 
-      const baseQuery = this.selectQuery(this.db.convertFieldsToQuery(p.fields));
-      const { sql, values } = this.db.prepareSelectQuery(baseQuery, p.params, pagination);
-      const data = await this.db.getAll(sql, values);
-      const total = +data[0]?.total || 0;
-      data.forEach((d) => delete d.total);
+      // const baseQuery = this.selectQuery(this.db.convertFieldsToQuery(p.fields));
+      // const { sql, values } = this.db.prepareSelectQuery(baseQuery, p.params, pagination);
+      // const data = await this.db.getAll(sql, values);
+      // const total = +data[0]?.total || 0;
+      // data.forEach((d) => delete d.total);
 
       res.json({ data, total });
     } catch (error) {
@@ -77,8 +66,7 @@ export default class DefaultController {
     try {
       body = this.db.validator.removeImmutableFields(this.entity, body);
       const p = await this.checkPermission(user, "edit", this.entity, [body], params);
-      if (!p.permitted && this.entity != "branch") throw "FORBIDDEN";
-      p.params.created_by = user.id;
+      if (!p.permitted) throw "FORBIDDEN";
 
       const data = await this.db.update(this.entity, p.data[0], p.params, "id");
       res.json(data);
@@ -90,17 +78,17 @@ export default class DefaultController {
   deleteById = async ({ user, params }, res, next) => {
     try {
       const p = await this.checkPermission(user, "delete", this.entity, [], params);
-
       if (!p.permitted) throw "FORBIDDEN";
-      if (!p.superuser) await this.db.softDelete(this.entity, p.params);
-      else {
-        const doc = (await this.db.get("document", { reference_id: params.id }))[0];
-        if (doc) {
-          await cleanUpOldFiles(path.resolve(doc.file_path));
-          await this.db.delete("document", { reference_id: params.id });
-        }
-        await this.db.delete(this.entity, { id: params.id });
+      // if (!p.superuser) {
+      //   await this.db.softDelete(this.entity, p.params);
+      //   res.json({ success: true });
+      // }
+      const doc = (await this.db.get("document", { reference_id: params.id }))[0];
+      if (doc) {
+        await cleanUpOldFiles(path.resolve(doc.file_path));
+        await this.db.delete("document", { reference_id: params.id });
       }
+      await this.db.delete(this.entity, { id: params.id });
 
       res.json({ success: true });
     } catch (error) {
@@ -113,12 +101,12 @@ export default class DefaultController {
       const p = await this.checkPermission(user, "view", this.entity, [], query);
       if (!p.superuser) throw "FORBIDDEN";
 
-      const baseQuery = this.selectQuery(this.db.convertFieldsToQuery(p.fields));
+      // const baseQuery = this.selectQuery(this.db.convertFieldsToQuery(p.fields));
 
-      const { sql, values } = this.db.prepareSelectQuery(baseQuery, p.params, pagination, true);
-      const data = await this.db.getAll(sql, values);
-      const total = +data[0]?.total || 0;
-      data.forEach((d) => delete d.total);
+      // const { sql, values } = this.db.prepareSelectQuery(baseQuery, p.params, pagination, true);
+      // const data = await this.db.getAll(sql, values);
+      // const total = +data[0]?.total || 0;
+      // data.forEach((d) => delete d.total);
 
       res.json({ data, total });
     } catch (error) {
@@ -131,7 +119,7 @@ export default class DefaultController {
       const p = await this.checkPermission(user, "edit", this.entity, [], params);
       if (!p.superuser) throw "FORBIDDEN";
       const data = await this.db.update(this.entity, { deleted_at: null }, p.params, "id");
-      res.json({ data });
+      res.json(data);
     } catch (error) {
       next(error);
     }

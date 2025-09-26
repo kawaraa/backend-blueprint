@@ -103,30 +103,7 @@ class SqliteDB {
     const error = this.validator.validateData(entity, data);
     if (error) throw error;
 
-    const { placeholders, values, fields } = this.prepareDataForInsert(data, ",");
-
-    const sql = `INSERT INTO ${entity} (${fields.join(",")}) VALUES ${placeholders}`;
-
-    return { sql, values };
-  }
-
-  prepareUpdateQuery(entity, data, conditions) {
-    const fields = Object.keys(data || {});
-    if (!(fields.length > 0)) throw "BAD_REQUEST-'data' should not be empty";
-    const error = this.validator.validateData(entity, data);
-    if (error) throw error;
-
-    const { placeholders, values } = this.prepareDataForUpdate(data, ",");
-    let sql = `UPDATE ${entity} SET ${placeholders}`;
-    if (conditions) {
-      const sqlCondition = this.prepareConditions(condition, " AND ", null, values.length);
-      values.push(...sqlCondition.values);
-      sql += ` WHERE ${sqlCondition.placeholders}`;
-    }
-    return { sql, values };
-  }
-
-  prepareDataForInsert(data, separator = ",") {
+    // Prepare data e.g.: placeholders: `(?,?),(?,?)`, values: [[v,v],[v,v]]
     const values = [];
     const fields = Array.from(new Set(data.flatMap((item) => Object.keys(item))));
     const placeholders = data
@@ -134,66 +111,40 @@ class SqliteDB {
         values.push(fields.map((f) => item[f] || null));
         return `(${fields.map(() => `?`).join(",")})`;
       })
-      .join(separator);
+      .join(",");
 
-    // Example: placeholders: `(?,?),(?,?)`, values: [[v,v],[v,v]]
-    return { placeholders, values };
+    const sql = `INSERT INTO ${entity} (${fields.join(",")}) VALUES ${placeholders}`;
+    return { sql, values };
   }
 
-  prepareDataForUpdate(object, separator = ",") {
-    const values = [];
-    const fields = Object.keys(object);
-    const placeholders = fields.map((key) => values.push(object[key]) && `${key} = ?`).join(separator);
-    // Example: placeholders: `field1 = ?, field2 = ?`, values: [v, v]
-    return { placeholders, values, fields };
-  }
-
-  prepareConditions(entity, conditions) {
-    const error = this.validator.validateData(entity, conditions);
+  prepareUpdateQuery(entity, item, conditions) {
+    const fields = Object.keys(item || {});
+    if (!(fields.length > 0)) throw "BAD_REQUEST-'item' should not be empty";
+    const error = this.validator.validateData(entity, item);
     if (error) throw error;
 
-    const fields = this.validator.schema[entity]?.fields;
+    // Prepare item: placeholders: `field1 = ?, field2 = ?`, values: [v, v]
     const values = [];
-
-    let placeholders = Object.keys(conditions)
-      .map((k) => {
-        const value = (conditions[k].value || conditions[k]).split(",");
-        const operator = conditions[k].operator;
-        const type = fields[k]?.type;
-
-        if (k.includes("id") || k.includes("created_by") || type == "enum") {
-          values.push(value);
-          return `${entity}.${k} = IN (?)`;
-        } else if (type == "number" || type == "date") {
-          values.push(...value);
-          if (!value[1]) return `${entity}.${k} ${operator || "="} ?`;
-          else return `${entity}.${k} BETWEEN ? AND ?`;
-        } else if (type == "boolean") {
-          values.push(value);
-          return `${entity}.${k} = ?`;
-        } else {
-          values.push(value);
-          return `${entity}.${k} ${operator ? operator : "LIKE"} ?`;
-        }
-      })
-      .join(" AND ");
-
-    // Example: placeholders: `field1 = ? AND field2 = ?`, values: [v, v]
-    return { placeholders, values };
+    const placeholders = fields.map((key) => values.push(item[key]) && `${key} = ?`).join(",");
+    let sql = `UPDATE ${entity} SET ${placeholders}`;
+    if (conditions) {
+      const sqlCondition = this.prepareConditions(conditions, " AND ", null, values.length);
+      values.push(...sqlCondition.values);
+      sql += ` WHERE ${sqlCondition.placeholders}`;
+    }
+    return { sql, values };
   }
 
-  prepareConditionsForJoinQuery(entitiesConditions) {
-    const placeholders = [];
-    const values = [];
-    Object.keys(entitiesConditions).forEach((entity) => {
-      const q = this.prepareConditions(entity, entitiesConditions[entity]);
-      if (q.values.length) {
-        values.push(...q.values);
-        placeholders.push(`${q.placeholders}`);
-      }
-    });
+  generateQuery(entities, conditions, pagination, fieldNames, leftJoin, deleted) {
+    if (typeof entities == "string") {
+      const parent = this.validator.schema[entities].parent;
+      const parentParent = this.validator.schema[parent]?.parent;
+      if (!parent) return this.generateSingleQuery(entities, conditions, pagination, fieldNames, deleted);
 
-    return { placeholders: placeholders.join(" AND "), values };
+      entities = [parentParent, parent, entities];
+    }
+
+    return this.generateJoinQuery(entities, conditions, pagination, fieldNames, leftJoin, deleted);
   }
 
   generateSingleQuery(entity, conditions, pagination, fieldNames, deleted) {
@@ -216,18 +167,6 @@ class SqliteDB {
     }
 
     return { sql, values };
-  }
-
-  generateQuery(entities, conditions, pagination, fieldNames, leftJoin, deleted) {
-    if (typeof entities == "string") {
-      const parent = this.validator.schema[entities].parent;
-      const parentParent = this.validator.schema[parent]?.parent;
-      if (!parent) return this.generateSingleQuery(entities, conditions, pagination, fieldNames, deleted);
-
-      entities = [parentParent, parent, entities];
-    }
-
-    return this.generateJoinQuery(entities, conditions, pagination, fieldNames, leftJoin, deleted);
   }
 
   generateJoinQuery(entities, conditions, pagination, fieldNames, leftJoin, deleted) {
@@ -288,6 +227,54 @@ class SqliteDB {
 
     // Usage: const join = this.db.generateJoinQuery(["identity", "hiring_process"], params);
     // Return: { sql: `SELECT t JOIN t2 ON t.id = t2.t_id WHERE t.id = ? ...`, values:[v, ...] }
+  }
+
+  prepareConditions(entity, conditions) {
+    const error = this.validator.validateData(entity, conditions);
+    if (error) throw error;
+
+    const fields = this.validator.schema[entity]?.fields;
+    const values = [];
+
+    let placeholders = Object.keys(conditions)
+      .map((k) => {
+        const value = (conditions[k].value || conditions[k]).split(",");
+        const operator = conditions[k].operator;
+        const type = fields[k]?.type;
+
+        if (k.includes("id") || k.includes("created_by") || type == "enum") {
+          values.push(value);
+          return `${entity}.${k} = IN (?)`;
+        } else if (type == "number" || type == "date") {
+          values.push(...value);
+          if (!value[1]) return `${entity}.${k} ${operator || "="} ?`;
+          else return `${entity}.${k} BETWEEN ? AND ?`;
+        } else if (type == "boolean") {
+          values.push(value);
+          return `${entity}.${k} = ?`;
+        } else {
+          values.push(value);
+          return `${entity}.${k} ${operator ? operator : "LIKE"} ?`;
+        }
+      })
+      .join(" AND ");
+
+    // Example: placeholders: `field1 = ? AND field2 = ?`, values: [v, v]
+    return { placeholders, values };
+  }
+
+  prepareConditionsForJoinQuery(entitiesConditions) {
+    const placeholders = [];
+    const values = [];
+    Object.keys(entitiesConditions).forEach((entity) => {
+      const q = this.prepareConditions(entity, entitiesConditions[entity]);
+      if (q.values.length) {
+        values.push(...q.values);
+        placeholders.push(`${q.placeholders}`);
+      }
+    });
+
+    return { placeholders: placeholders.join(" AND "), values };
   }
 
   // convertFieldsToQuery(fields, prefix = "") {

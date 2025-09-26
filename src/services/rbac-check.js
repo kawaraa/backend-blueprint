@@ -27,12 +27,16 @@ export default async function checkPermission(user, action, entity, data = [], p
 
   result.superuser = codes.has("*:*:*:*");
 
+  let notPermitted = false;
   result.data.forEach((item) => {
     if (action == "add") {
       if (rule == "user" && parent == "users") item.user_id = user.id;
+      if (rule == "group" && !item.group_ids.every((id) => user.group_ids.includes(id))) notPermitted = true;
       item.created_by = user.id;
     }
   });
+
+  if (notPermitted) return result;
 
   if (result.superuser) {
     result.permitted = true;
@@ -53,6 +57,12 @@ export default async function checkPermission(user, action, entity, data = [], p
     return result;
   }
 
-  result.permitted = hasPermission;
-  if (action != "add") result.params.user_id = user.id;
+  let inTheSameGroup = action == "view" && user.group_ids.includes(params.group_ids);
+  if (["edit", "delete"].includes(action)) {
+    const data = (await db.getAll(db.generateQuery(entity, params, null, null, false)))[0];
+    const key = data.group_ids ? "group_ids" : Object.keys(data).find((field) => field.includes("group_"));
+    const itemGroupIds = data[key]?.split(",") || [];
+    if (!itemGroupIds.some((id) => user.group_ids.includes(id))) inTheSameGroup = false;
+  }
+  result.permitted = user.groups_ids && inTheSameGroup && hasPermission;
 }

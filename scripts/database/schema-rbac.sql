@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS users ( -- {users:user}
   failed_attempts SMALLINT DEFAULT 0,
   locked_until TIMESTAMP,
   mfa_secret TEXT,
+  group_ids TEXT NOT NULL,
   history JSONB, -- immutable -- history, e.g. {...ChangedData,performed_by,performed_date}
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   created_by INTEGER NOT NULL, -- immutable
@@ -60,7 +61,7 @@ CREATE TABLE IF NOT EXISTS permission ( -- {permission:superuser}
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
-CREATE TABLE IF NOT EXISTS group ( -- {group:user}
+CREATE TABLE IF NOT EXISTS group ( -- {group:group}
   id VARCHAR(250) PRIMARY KEY, -- immutable
   parents_ids VARCHAR(250),
   name VARCHAR(150) NOT NULL,
@@ -69,13 +70,13 @@ CREATE TABLE IF NOT EXISTS group ( -- {group:user}
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
-CREATE TABLE IF NOT EXISTS group_map ( -- {group:user}
-  group_id VARCHAR(250) NOT NULL, -- immutable
-  item_id VARCHAR(250) NOT NULL,
-  created_by INTEGER NOT NULL, -- immutable
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
-  FOREIGN KEY (group_id) REFERENCES group(id),
-);
+-- CREATE TABLE IF NOT EXISTS group_map ( -- {group:user}
+--   group_id VARCHAR(250) NOT NULL, -- immutable
+--   item_id VARCHAR(250) NOT NULL,
+--   created_by INTEGER NOT NULL, -- immutable
+--   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
+--   FOREIGN KEY (group_id) REFERENCES group(id),
+-- );
 
 ----- Not supported in SQLITE:
 -- ALTER TABLE users ADD CONSTRAINT fk_users_role_id FOREIGN KEY (role_id) REFERENCES role(id);
@@ -89,7 +90,8 @@ CREATE TABLE IF NOT EXISTS settings ( -- {settings:user:users}
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
-CREATE TABLE IF NOT EXISTS citizen ( -- {citizen:branch}
+CREATE TABLE IF NOT EXISTS person ( -- {person:branch}
+  -- people/citizen Table
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
   first_name VARCHAR(50) NOT NULL,
   middle_name VARCHAR(50), -- Father name or middle name
@@ -98,6 +100,7 @@ CREATE TABLE IF NOT EXISTS citizen ( -- {citizen:branch}
     'ACTIVE', 'ABROAD', 'DETAINED', 'WANTED'
   )),
   note TEXT,
+  group_ids TEXT NOT NULL,
   history JSONB, -- immutable -- history, e.g. {...ChangedData,performed_by,performed_date}
   created_by INTEGER NOT NULL, -- immutable
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
@@ -105,9 +108,9 @@ CREATE TABLE IF NOT EXISTS citizen ( -- {citizen:branch}
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
-CREATE TABLE contact ( -- {contact:branch:citizen}
+CREATE TABLE contact ( -- {contact:branch:person}
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
-  user_id INTEGER NOT NULL, -- immutable 
+  person_id INTEGER NOT NULL, -- immutable 
   type VARCHAR(100) NOT NULL,
   value VARCHAR(150) NOT NULL,
   is_primary BOOLEAN DEFAULT FALSE,
@@ -117,13 +120,13 @@ CREATE TABLE contact ( -- {contact:branch:citizen}
   history JSONB, -- immutable -- history, e.g. {...ChangedData,performed_by,performed_date}
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   deleted_at TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES citizen(id) ON DELETE CASCADE,
+  FOREIGN KEY (person_id) REFERENCES person(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
-CREATE TABLE address ( -- {address:branch:citizen}
+CREATE TABLE address ( -- {address:branch:person}
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
-  user_id INTEGER NOT NULL, -- immutable
+  person_id INTEGER NOT NULL, -- immutable
   country VARCHAR(50) NOT NULL,
   province VARCHAR(50) NOT NULL,
   city VARCHAR(50) NOT NULL,
@@ -135,10 +138,28 @@ CREATE TABLE address ( -- {address:branch:citizen}
   created_by INTEGER NOT NULL, -- immutable
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   deleted_at TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES citizen(id) ON DELETE CASCADE,
+  FOREIGN KEY (person_id) REFERENCES person(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
+
+-- Documents Registry
+CREATE TABLE document ( -- {document:group:person}
+  id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
+  parent_id VARCHAR(250) NOT NULL, -- immutable
+  reference_id VARCHAR(250) NOT NULL, -- immutable
+  type VARCHAR(50), -- 'PASSPORT', 'DRIVER_LICENSE', 'Birth certificate registration number'
+  number VARCHAR(100), -- document_number
+  authority VARCHAR(100), -- issuing_authority
+  issue_date DATE,
+  expiration_date DATE NOT NULL DEFAULT (CURRENT_DATE + INTERVAL '3 year'),
+  file_path VARCHAR(250) NOT NULL, -- immutable
+  verified_at TIMESTAMP WITH TIME ZONE,
+  created_by INTEGER NOT NULL, -- immutable
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
+  deleted_at TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
 
 -- System UI translation table
 CREATE TABLE IF NOT EXISTS translation ( -- {translation:allUsers}
@@ -192,11 +213,11 @@ BEGIN
 END;
 
 -- Update the updated_at timestamp
-CREATE TRIGGER IF NOT EXISTS citizen_updated_at_trigger
-AFTER UPDATE ON citizen
+CREATE TRIGGER IF NOT EXISTS person_updated_at_trigger
+AFTER UPDATE ON person
 FOR EACH ROW
 BEGIN
-  UPDATE citizen 
+  UPDATE person 
   SET updated_at = CURRENT_TIMESTAMP 
   WHERE id = NEW.id;
 END;
@@ -205,4 +226,5 @@ END;
 CREATE INDEX IF NOT EXISTS idx_translation_article ON translation(article);
 CREATE INDEX IF NOT EXISTS idx_input_field_form ON input_field(form);
 CREATE INDEX IF NOT EXISTS idx_group_map ON group(item_id);
+-- CREATE INDEX IF NOT EXISTS idx_users_group_ids ON users(group_ids);
 -- CREATE INDEX IF NOT EXISTS idx_xxx_group_ids ON xxx(group_ids);
