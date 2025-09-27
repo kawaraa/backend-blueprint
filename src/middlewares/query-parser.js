@@ -1,5 +1,5 @@
 import Pagination from "../models/pagination.js";
-import db from "../utils/db-validator.js";
+// import DBValidator from "../utils/db-validator.js";
 
 const queryParser = (req, res, next) => {
   req.pagination = new Pagination(req.query);
@@ -9,8 +9,7 @@ const queryParser = (req, res, next) => {
   delete req.query.limit;
   delete req.query.offset;
 
-  // Map the fields to it's  entity, E.g. query?tables=table1,table2&created_at=>::2024-01-01
-  // validate input, db.validateData
+  // Todo: the query validation can be moved to here, Also mapping the fields to it's  entity, E.g. query?tables=table1,table2&created_at=>::2024-01-01 will become {entity1:{field1:"",field2:""}
 
   next();
 };

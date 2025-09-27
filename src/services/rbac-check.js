@@ -25,9 +25,11 @@ export default async function checkPermission(user, action, entity, data = [], p
 
   let notPermitted = false;
   result.data.forEach((item) => {
+    if (rule == "group" && fields.group_ids && !item.group_ids.every((id) => user.group_ids.includes(id))) {
+      notPermitted = true;
+    }
     if (action == "add") {
       if (rule == "user" && parent == "users") item.user_id = user.id;
-      if (rule == "group" && !item.group_ids.every((id) => user.group_ids.includes(id))) notPermitted = true;
       item.created_by = user.id;
     } else if (action == "edit") {
       Object.keys(item).filter((f) => codes.has(`edit:${entity}:*:${f}`) || delete item[f]);

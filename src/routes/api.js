@@ -4,8 +4,6 @@ import defaultSubRoutes from "./default.js";
 import DefaultController from "../controllers/default.js";
 import { schema } from "../config/sql-schema.js";
 
-// Additional global middleware or routes can be defined here
-
 async function loadModule(path, fallback) {
   try {
     return (await import(path))?.default || fallback;

@@ -1,7 +1,4 @@
 import Controller from "./default.js";
-import checkPermission from "../services/rbac-check.js";
-import Permission from "../models/permission.js";
-const permissions = jsonRequire("src/config/permissions.json");
 
 export default class PermissionController extends Controller {
   constructor(entity, softDelete) {
@@ -10,9 +7,23 @@ export default class PermissionController extends Controller {
 
   getPermissionList = async ({ user }, res, next) => {
     try {
-      const result = await checkPermission(user, "add", this.entity);
-      if (!result.permitted) throw "FORBIDDEN";
-      res.json({ data: permissions });
+      const p = await this.checkPermission(user, "add", this.entity);
+      if (!p.permitted) throw "FORBIDDEN";
+
+      const permissions = {};
+      Object.keys(this.db.validator.schema).map((entity) => {
+        if (!permissions[entity]) permissions[entity] = {};
+        const { fields } = this.db.validator.schema[entity];
+        const mutableFieldsPermissions = Object.keys(fields)
+          .filter((f) => !fields[f].immutable)
+          .map((f) => `*:${f}`);
+        permissions[entity].add = [`*:*`];
+        permissions[entity].view = [`*:*`].concat(mutableFieldsPermissions);
+        permissions[entity].edit = [`*:*`].concat(mutableFieldsPermissions);
+        permissions[entity].delete = ["*:*", "self:*"];
+      });
+
+      res.json(permissions);
     } catch (error) {
       next(error);
     }
@@ -30,7 +41,7 @@ export default class PermissionController extends Controller {
 
   create = async ({ user, body }, res, next) => {
     try {
-      const result = await checkPermission(user, "add", this.entity, body);
+      const result = await this.checkPermission(user, "add", this.entity, body);
       if (!result.permitted) throw "FORBIDDEN";
       res.json(await this.db.create(this.entity, p.data, "*"));
     } catch (error) {
@@ -40,7 +51,7 @@ export default class PermissionController extends Controller {
 
   deleteByRoleIdAndCode = async ({ user, params }, res, next) => {
     try {
-      const result = await checkPermission(user, "delete", this.entity, [], params);
+      const result = await this.checkPermission(user, "delete", this.entity, [], params);
       if (!result.permitted) throw "FORBIDDEN";
       await this.db.delete(this.entity, p.params);
       res.json({ success: true });

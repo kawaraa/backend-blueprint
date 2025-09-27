@@ -1,18 +1,17 @@
-import { checkPermission } from "../config/rbac-check.js";
 import Controller from "./default.js";
 
 export default class TranslationController extends Controller {
   constructor(entity, softDelete) {
     super(entity, softDelete);
-    this.newSelect = `SELECT id, text_a, text_b FROM ${this.entity} WHERE text_a = ANY($1)`;
+    this.newSelect = `SELECT id, text_a, text_b FROM ${this.entity} WHERE text_a = IN (?)`;
   }
 
-  filter = async ({ user, body, pagination }, res, next) => {
+  filter = async ({ user, body }, res, next) => {
     try {
-      const result = await checkPermission(user, "view", this.entity, data);
-      if (!result.permitted) throw "FORBIDDEN";
+      const p = await this.checkPermission(user, "view", this.entity);
+      if (!p.permitted) throw "FORBIDDEN";
       const data = await this.db.getAll(this.newSelect, [body.text_a]);
-      res.json({ data: result.data, total: +result.data.length });
+      res.json({ data, total: +data.length });
     } catch (error) {
       next(error);
     }

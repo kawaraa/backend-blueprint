@@ -1,6 +1,13 @@
 -- Enable foreign key support (important for SQLite)
 -- PRAGMA foreign_keys = ON;
 
+-- 1. Create the superuser.
+-- 2. Create "*" role for the superuser.
+-- 3. Add "*:*:*:*" permission to the superuser role.
+-- 4. Create "Consumer" role for Consumers.
+-- 6. Add the required permissions to the "Consumer" role E.g. "view:users:self:*","edit:users:self:*".
+-- 7. Create "Consumers" group for the new registered users
+
 -- 1. Insert sample roles
 INSERT INTO role (name, description) VALUES
 ('SUPERVISOR', 'Supervisor role with elevated permissions'),

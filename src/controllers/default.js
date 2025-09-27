@@ -58,7 +58,7 @@ export default class DefaultController {
   update = async ({ user, params, body }, res, next) => {
     try {
       body = this.db.validator.removeImmutableFields(this.entity, body);
-      const p = await this.checkPermission(user, "edit", this.entity, [body], params);
+      const p = await this.checkPermission(user, "edit", this.entity, body, params);
       if (!p.permitted) throw "FORBIDDEN";
 
       const data = await this.db.update(this.entity, p.data[0], p.params, "id");

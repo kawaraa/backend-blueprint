@@ -12,52 +12,27 @@
 
 
 -- Role-Based Access Control (RBAC) System
-CREATE TABLE IF NOT EXISTS users ( -- {users:user}
+CREATE TABLE IF NOT EXISTS users ( -- {users:group}
   id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
+  type VARCHAR(50) NOT NULL, -- CONSUMER, ADMIN
   name VARCHAR(100) NOT NULL,
   username VARCHAR(50) UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL, -- Store bcrypt/scrypt hashes
-  type VARCHAR(50) NOT NULL, -- CONSUMER, ADMIN
+  password_hash TEXT NOT NULL, -- hidden Store bcrypt/scrypt hashes
   -- User-Role/Group Assignment
   role_id INTEGER,
   role_assignor INTEGER,
   role_assigned_at TIMESTAMP,
   status VARCHAR(50) NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'ACTIVE', 'INACTIVE', 'SUSPENDED')),
   last_login TIMESTAMP,
-  failed_attempts SMALLINT DEFAULT 0,
-  locked_until TIMESTAMP,
-  mfa_secret TEXT,
+  failed_attempts SMALLINT DEFAULT 0, -- hidden
+  locked_until TIMESTAMP, -- hidden
+  mfa_secret TEXT, -- hidden
   group_ids TEXT NOT NULL,
   history JSONB, -- immutable -- history, e.g. {...ChangedData,performed_by,performed_date}
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   created_by INTEGER NOT NULL, -- immutable
   deleted_at TIMESTAMP,
   FOREIGN KEY (role_id) REFERENCES role(id),
-  FOREIGN KEY (created_by) REFERENCES users(id)
-);
-
--- Permission Groups/Role table
-CREATE TABLE IF NOT EXISTS role ( -- {role:superuser}
-  id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
-  name VARCHAR(50) UNIQUE NOT NULL CHECK(name IN (
-    'SUPERVISOR', 'ADMIN', 'SYSTEM_ADMIN', 'OFFICER', 
-    'ENLISTED', 'PERSONNEL', 'CITIZEN', 'AGENT'
-  )),
-  description TEXT,
-  created_by INTEGER NOT NULL, -- immutable
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
-  FOREIGN KEY (created_by) REFERENCES users(id)
-);
-
--- Group/Role-Permission Mapping table. the code are generated in permissions controller
-CREATE TABLE IF NOT EXISTS permission ( -- {permission:superuser}
-  role_id INTEGER NOT NULL, -- immutable
-  code VARCHAR(100) NOT NULL, -- immutable -- 'view:entity:record:field' E.g. '*:*:*:*'
-  description TEXT,
-  created_by INTEGER NOT NULL, -- immutable
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
-  PRIMARY KEY (role_id, code),
-  FOREIGN KEY (role_id) REFERENCES role(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
@@ -70,6 +45,35 @@ CREATE TABLE IF NOT EXISTS group ( -- {group:group}
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
+
+-- Permission Groups/Role table
+CREATE TABLE IF NOT EXISTS role ( -- {role:group}
+  id INTEGER PRIMARY KEY AUTOINCREMENT, -- immutable
+  name VARCHAR(50) UNIQUE NOT NULL CHECK(name IN (
+    'SUPERVISOR', 'ADMIN', 'SYSTEM_ADMIN', 'OFFICER', 
+    'ENLISTED', 'PERSONNEL', 'CITIZEN', 'AGENT'
+  )),
+  description TEXT,
+  group_ids TEXT NOT NULL,
+  created_by INTEGER NOT NULL, -- immutable
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+-- Group/Role-Permission Mapping table. the code are generated in permissions controller
+CREATE TABLE IF NOT EXISTS permission ( -- {permission:group}
+  role_id INTEGER NOT NULL, -- immutable
+  code VARCHAR(100) NOT NULL, -- immutable -- 'view:entity:record:field' E.g. '*:*:*:*'
+  description TEXT,
+  group_ids TEXT NOT NULL,
+  created_by INTEGER NOT NULL, -- immutable
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- immutable
+  PRIMARY KEY (role_id, code),
+  FOREIGN KEY (role_id) REFERENCES role(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+
 -- CREATE TABLE IF NOT EXISTS group_map ( -- {group:user}
 --   group_id VARCHAR(250) NOT NULL, -- immutable
 --   item_id VARCHAR(250) NOT NULL,

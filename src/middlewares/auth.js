@@ -1,7 +1,11 @@
 import jwt from "jsonwebtoken";
 const secret = process.env.JWT_SECRET;
 
-export const authMiddleware = (req, res, next) => {
+export default function getAuthMiddleware(onlyParseToken) {
+  return onlyParseToken ? parseTokenMiddleware : [parseTokenMiddleware, checkUser];
+}
+
+export const checkUser = (req, res, next) => {
   try {
     if (!req.user) throw "unauthenticated";
     next();

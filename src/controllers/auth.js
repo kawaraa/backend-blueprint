@@ -9,12 +9,17 @@ const maxAge = 12 * 60 * 60 * 1000; // expires in 8hrs in milliseconds
 export default class AuthController extends Controller {
   constructor(entity, softDelete) {
     super(entity, softDelete);
-    this.fieldsForJWT = "id,name,username,type,status,last_login,password_hash";
+    this.selectUserQuery = `SELECT id,name,username,type,status,created_at FROM users WHERE username = ?`;
   }
 
   register = async ({ body: { name, username, password } }, res, next) => {
     try {
       const data = { name, username, type: "CONSUMER", password_hash: await bcrypt.hash(password, 10) };
+      /**
+       Todo: 
+       1. Get the Consumers group id and assign the user to it
+       2. Get the Consumer role id and assign it to the user so he can update his own info e.g. name
+       */
       const user = await this.db.create("users", [data], "id");
       await this.db.updateById("users", { created_by: user.id }, user.id);
       res.json({ data: [user] });
@@ -26,8 +31,7 @@ export default class AuthController extends Controller {
   login = async (req, res, next) => {
     try {
       const { username, password } = req.body;
-
-      const user = (await this.db.get("users", { username }, this.fieldsForJWT))[0];
+      const user = await this.db.getOne(this.selectUserQuery, username);
 
       if (!user || !(await bcrypt.compare(password, user.password_hash))) return "UNAUTHORIZED";
       delete user.password_hash;

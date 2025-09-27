@@ -1,19 +1,17 @@
 import Controller from "./default.js";
 import crypto from "node:crypto";
 import bcrypt from "bcrypt";
-import checkPermission from "../services/rbac-check.js";
 import User from "../models/user.js";
 
 export default class UserController extends Controller {
   constructor(entity, softDelete) {
     super(entity, softDelete);
-    this.selectQuery = `SELECT id, name, username, type, status, created_at FROM ${this.entity} role_id WHERE id = ?`;
-    //  COUNT(*) AS total
+    this.selectRoleQuery = `SELECT id,group_ids FROM role WHERE id = ?`;
   }
 
   getLoggedInUser = async ({ user }, res, next) => {
     try {
-      res.json({ data: await this.db.get(this.selectQuery, [user.id]) });
+      res.json(user);
     } catch (error) {
       next(error);
     }
@@ -21,12 +19,10 @@ export default class UserController extends Controller {
 
   get = async ({ user, query, pagination }, res, next) => {
     try {
-      const result = await this.checkPermission(user, "view", this.entity, [], query);
-      if (!result.permitted) throw "FORBIDDEN";
+      const p = await this.checkPermission(user, "view", this.entity, [], query);
+      if (!p.permitted) throw "FORBIDDEN";
 
-      const data = await this.db.query(
-        this.db.prepareSelectQuery(this.selectQuery, result.params, pagination, false, "t1.")
-      );
+      const data = await this.db.query(this.db.generateQuery(this.entity, p.params, pagination, p.fields));
       const total = +data[0]?.total || 0;
       data.forEach((d) => delete d.total);
 
@@ -38,11 +34,12 @@ export default class UserController extends Controller {
 
   create = async ({ user, body }, res, next) => {
     try {
-      const result = await this.checkPermission(user, "add", this.entity, [body]);
-      if (!result.permitted) throw "FORBIDDEN";
+      const p = await this.checkPermission(user, "add", this.entity, body);
+      if (!p.permitted) throw "FORBIDDEN";
+      await this.#checkUserAndRoleGroup(body.role_id, body.group_ids);
 
-      body.role_assignor = user.id;
       body.type = "ADMIN";
+      body.role_assignor = user.id;
       const newUser = new User(body);
       newUser.password_hash = await bcrypt.hash(body.password || crypto.randomBytes(8).toString("hex"), 10);
 
@@ -55,23 +52,17 @@ export default class UserController extends Controller {
 
   update = async ({ user, body, params }, res, next) => {
     try {
+      delete body.id;
       body.role_assignor = user.id;
-      const data = new User(body);
-      delete data.id;
+      const userData = new User(body);
 
-      const result = await checkPermission(user, "edit", this.entity, [{ ...data, id: params.id }]);
-      if (!result.permitted) return next("FORBIDDEN");
+      const p = await this.checkPermission(user, "edit", this.entity, userData);
+      if (!p.permitted) throw "FORBIDDEN";
+      await this.#checkUserAndRoleGroup(userData.role_id, userData.group_ids);
 
-      if (body.password) data.password_hash = await bcrypt.hash(body.password, 10);
+      if (body.password) userData.password_hash = await bcrypt.hash(body.password, 10);
 
-      if (data.type != "ADMIN") {
-        const user = (await this.db.getByField(this.entity, "id", body.id, "type"))[0];
-        if (user?.type == "NORMAL") {
-          return next("403-user type 'NORMAL' can not have admin role");
-        }
-      }
-
-      await this.db.updateById(this.entity, data, params.id);
+      await this.db.update(this.entity, userData, params);
 
       res.json({ success: true });
     } catch (error) {
@@ -81,11 +72,11 @@ export default class UserController extends Controller {
 
   getDeleted = async ({ user, query, pagination }, res, next) => {
     try {
-      const result = await this.checkPermission(user, "view", this.entity, [], query);
-      if (!result.superuser) throw "FORBIDDEN";
+      const p = await this.checkPermission(user, "view", this.entity, [], query);
+      if (!p.permitted) throw "FORBIDDEN";
 
       const data = await this.db.query(
-        this.db.prepareSelectQuery(this.selectQuery, result.params, pagination, true, "t1.")
+        this.db.generateQuery(this.entity, p.params, pagination, p.fields, true, true)
       );
       const total = +data[0]?.total || 0;
       data.forEach((d) => delete d.total);
@@ -95,4 +86,13 @@ export default class UserController extends Controller {
       next(error);
     }
   };
+
+  // This will check whether the user and the role assigned to him are in the same group
+  async #checkUserAndRoleGroup(userRoleId, userGroupIds = []) {
+    if (!userRoleId) return;
+    const role = await this.db.getOne(this.selectRoleQuery, userRoleId);
+    if (!role) throw "BAS_REQUEST";
+    const roleGroupIds = role.group_ids.split(",");
+    if (!userGroupIds.some((id) => roleGroupIds.includes(id))) throw "FORBIDDEN";
+  }
 }
